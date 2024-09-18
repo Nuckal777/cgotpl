@@ -1,0 +1,11 @@
+BasedOnStyle: Google
+
+# Some folks prefer to write "int& foo" while others prefer "int &foo".  The
+# Google Style Guide only asks for consistency within a project, we chose
+# "int& foo" for this project:
+DerivePointerAlignment: false
+PointerAlignment: Left
+IndentWidth: 4
+AllowShortFunctionsOnASingleLine: None
+ColumnLimit: 150
+NamespaceIndentation: All
