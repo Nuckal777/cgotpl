@@ -4,7 +4,7 @@ include(CTest)
 
 set(C_STANDARD 99)
 
-add_library(lib lib/map.c lib/stream.c lib/json.c lib/template.c)
+add_library(lib lib/encode.c lib/map.c lib/stream.c lib/json.c lib/template.c)
 
 add_executable(test_map test/map.c)
 target_link_libraries(test_map PUBLIC lib)

@@ -4,10 +4,12 @@
 #include <ctype.h>
 #include <errno.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
+#include "encode.h"
 #include "json.h"
 #include "stream.h"
 
@@ -19,6 +21,7 @@ typedef struct {
 
 #define BUF_DEFAULT_CAP 128
 
+#define ERR_TEMPLATE_INVALID_ESCAPE -900
 #define ERR_TEMPLATE_INVALID_SYNTAX -901
 #define ERR_TEMPLATE_BUFFER_OVERFLOW -902
 
@@ -39,6 +42,13 @@ void buf_append(buf* b, const char* arr, size_t n) {
     b->len += n;
 }
 
+void buf_free(buf* b) {
+    b->len = 0;
+    b->cap = 0;
+    free(b->data);
+    b->data = NULL;
+}
+
 int sprintval(buf* b, json_value* val) {
     size_t expected;
     char print_buf[128];
@@ -49,6 +59,9 @@ int sprintval(buf* b, json_value* val) {
                 return ERR_TEMPLATE_BUFFER_OVERFLOW;
             }
             buf_append(b, print_buf, expected);
+            return 0;
+        case JSON_TY_STRING:
+            buf_append(b, val->inner.str, strlen(val->inner.str));
             return 0;
     }
     assert(0);
@@ -174,6 +187,95 @@ int template_parse_number(stream* in, double* out) {
     return ERR_TEMPLATE_BUFFER_OVERFLOW;
 }
 
+int template_parse_str(stream* in, char** out) {
+    *out = NULL;
+    unsigned char cp[4];
+    size_t cp_len;
+    buf b;
+    int err = 0;
+    buf_init(&b);
+    while (true) {
+        err = stream_next_utf8_cp(in, cp, &cp_len);
+        if (err != 0) {
+            goto cleanup;
+        }
+        if (cp_len > 1) {
+            buf_append(&b, (const char*)cp, cp_len);
+            continue;
+        }
+        switch (cp[0]) {
+            case '"':
+                buf_append(&b, "\0", 1);
+                *out = b.data;
+                goto cleanup;
+            case '\\':
+                err = stream_next_utf8_cp(in, cp, &cp_len);
+                if (err != 0) {
+                    goto cleanup;
+                }
+                if (cp_len != 1) {
+                    err = ERR_TEMPLATE_INVALID_SYNTAX;
+                    goto cleanup;
+                }
+                unsigned char escaped_cp[5];
+                switch (cp[0]) {
+                    case '"':
+                    case '\\':
+                    case '/':
+                        buf_append(&b, (const char*)cp, 1);
+                        break;
+                    case 'b':
+                        buf_append(&b, "\b", 1);
+                        break;
+                    case 'f':
+                        buf_append(&b, "\f", 1);
+                        break;
+                    case 'n':
+                        buf_append(&b, "\n", 1);
+                        break;
+                    case 'r':
+                        buf_append(&b, "\r", 1);
+                        break;
+                    case 't':
+                        buf_append(&b, "\t", 1);
+                        break;
+                    case 'u':
+                        for (size_t i = 0; i < 4; i++) {
+                            err = stream_next_utf8_cp(in, cp, &cp_len);
+                            if (err != 0) {
+                                goto cleanup;
+                            }
+                            if (cp_len != 1) {
+                                err = ERR_TEMPLATE_INVALID_ESCAPE;
+                                goto cleanup;
+                            }
+                            if (!((cp[0] >= '0' && cp[0] <= '9') || (cp[0] >= 'a' && cp[0] <= 'f'))) {
+                                err = ERR_TEMPLATE_INVALID_ESCAPE;
+                                goto cleanup;
+                            }
+                            escaped_cp[i] = cp[0];
+                        }
+                        escaped_cp[4] = 0;
+                        long unescaped_cp = strtol((const char*)escaped_cp, NULL, 16);
+                        char encoded[4];
+                        size_t encoded_len;
+                        utf8_encode((int32_t)unescaped_cp, encoded, &encoded_len);
+                        buf_append(&b, encoded, encoded_len);
+                        break;
+                }
+                continue;
+            default:
+                buf_append(&b, (const char*)cp, 1);
+                continue;
+        }
+    }
+cleanup:
+    if (err != 0) {
+        buf_free(&b);
+    }
+    return err;
+}
+
 int template_dispatch_pipeline(stream* in, state* state, json_value* result) {
     unsigned char cp[4];
     size_t cp_len;
@@ -197,6 +299,13 @@ int template_dispatch_pipeline(stream* in, state* state, json_value* result) {
                     seek_back += 1;
                 }
                 return stream_seek(in, -seek_back);
+            case '"':
+                err = template_parse_str(in, &result->inner.str);
+                if (err != 0) {
+                    return err;
+                }
+                result->ty = JSON_TY_STRING;
+                return 0;
             case '-':
                 has_minus = true;
                 continue;
@@ -240,7 +349,7 @@ int template_end_pipeline(stream* in, state* state) {
     json_value result = JSON_NULL;
     int err = template_dispatch_pipeline(in, state, &result);
     if (err != 0) {
-        return err;
+        goto cleanup;
     }
     unsigned char cp[4];
     size_t cp_len;
@@ -248,10 +357,11 @@ int template_end_pipeline(stream* in, state* state) {
     while (true) {
         int err = stream_next_utf8_cp(in, cp, &cp_len);
         if (err != 0) {
-            return err;
+            goto cleanup;
         }
         if (cp_len != 1) {
-            return ERR_TEMPLATE_INVALID_SYNTAX;
+            err = ERR_TEMPLATE_INVALID_SYNTAX;
+            goto cleanup;
         }
         if (isspace(cp[0]) && !has_minus) {
             continue;
@@ -275,11 +385,16 @@ int template_end_pipeline(stream* in, state* state) {
                     return 0;
                 }
                 printf("sprintval\n");
-                return sprintval(&state->out, &result);
+                err = sprintval(&state->out, &result);
+                goto cleanup;
             default:
-                return ERR_TEMPLATE_INVALID_SYNTAX;
+                err = ERR_TEMPLATE_INVALID_SYNTAX;
+                goto cleanup;
         }
     }
+cleanup:
+    json_value_free(&result);
+    return err;
 }
 
 int template_start_pipeline(stream* in, state* state) {
