@@ -74,7 +74,7 @@ nutest_result template_print_number(void) {
     return NUTEST_PASS;
 }
 
-nutest_result template_print_str(void) {
+nutest_result template_print_regular_str(void) {
     json_value val = JSON_NULL;
     const char* in = "d {{- \"hello\" }}e";
     char* out;
@@ -87,6 +87,19 @@ nutest_result template_print_str(void) {
     return NUTEST_PASS;
 }
 
+nutest_result template_print_backtick_str(void) {
+    json_value val = JSON_NULL;
+    const char* in = "f {{- `bye\"` }}g";
+    char* out;
+    int err = template_eval(in, strlen(in), &val, &out);
+    printf("err: %d\n", err);
+    NUTEST_ASSERT(err == 0);
+    printf("out: %s\n", out);
+    NUTEST_ASSERT(strcmp("fbye\"g", out) == 0);
+    free(out);
+    return NUTEST_PASS;
+}
+
 int main() {
     nutest_register(template_identity);
     nutest_register(template_empty_pipeline);
@@ -94,6 +107,7 @@ int main() {
     nutest_register(template_strip_whitespace_post);
     nutest_register(template_strip_whitespace_multi);
     nutest_register(template_print_number);
-    nutest_register(template_print_str);
+    nutest_register(template_print_regular_str);
+    nutest_register(template_print_backtick_str);
     return nutest_run();
 }

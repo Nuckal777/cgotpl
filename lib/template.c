@@ -187,7 +187,34 @@ int template_parse_number(stream* in, double* out) {
     return ERR_TEMPLATE_BUFFER_OVERFLOW;
 }
 
-int template_parse_str(stream* in, char** out) {
+int template_parse_backtick_str(stream* in, char** out) {
+    *out = NULL;
+    unsigned char cp[4];
+    size_t cp_len;
+    buf b;
+    int err = 0;
+    buf_init(&b);
+    while (true) {
+        err = stream_next_utf8_cp(in, cp, &cp_len);
+        if (err != 0) {
+            goto cleanup;
+        }
+        if (cp_len > 1 || cp[0] != '`') {
+            buf_append(&b, (const char*)cp, cp_len);
+            continue;
+        }
+        buf_append(&b, "\0", 1);
+        *out = b.data;
+        goto cleanup;
+    }
+cleanup:
+    if (err != 0) {
+        buf_free(&b);
+    }
+    return err;
+}
+
+int template_parse_regular_str(stream* in, char** out) {
     *out = NULL;
     unsigned char cp[4];
     size_t cp_len;
@@ -300,7 +327,14 @@ int template_dispatch_pipeline(stream* in, state* state, json_value* result) {
                 }
                 return stream_seek(in, -seek_back);
             case '"':
-                err = template_parse_str(in, &result->inner.str);
+                err = template_parse_regular_str(in, &result->inner.str);
+                if (err != 0) {
+                    return err;
+                }
+                result->ty = JSON_TY_STRING;
+                return 0;
+            case '`':
+                err = template_parse_backtick_str(in, &result->inner.str);
                 if (err != 0) {
                     return err;
                 }
