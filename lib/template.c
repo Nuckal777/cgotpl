@@ -71,10 +71,13 @@ int sprintval(buf* b, json_value* val) {
     assert(0);
 }
 
+#define STATE_IDENT_CAP 64
+
 typedef struct {
     json_value* dot;
     buf out;
     size_t out_nospace;
+    char ident[STATE_IDENT_CAP];
 } state;
 
 int template_skip_whitespace(stream* in) {
@@ -307,102 +310,78 @@ cleanup:
     return err;
 }
 
-int template_parse_identifier(stream* in, char** out) {
-    *out = NULL;
+int template_parse_ident(stream* in, state* state) {
     unsigned char cp[4];
     size_t cp_len;
-    buf b;
     int err = 0;
-    buf_init(&b);
-    while (true) {
+    for (size_t i = 0; i < STATE_IDENT_CAP; i++) {
         err = stream_next_utf8_cp(in, cp, &cp_len);
         if (err != 0) {
-            goto cleanup;
+            return err;
         }
         if (cp_len > 1) {
-            err = ERR_TEMPLATE_INVALID_SYNTAX;
-            goto cleanup;
+            return ERR_TEMPLATE_INVALID_SYNTAX;
         }
         if (!isalnum(cp[0])) {
-            *out = b.data;
-            buf_append(&b, "\0", 1);
-            err = stream_seek(in, -1);
-            goto cleanup;
+            state->ident[i] = 0;
+            return stream_seek(in, -1);
         }
-        buf_append(&b, (const char*)cp, 1);
+        state->ident[i] = cp[0];
     }
-cleanup:
-    if (err != 0) {
-        buf_free(&b);
-    }
-    return err;
+    return ERR_TEMPLATE_BUFFER_OVERFLOW;
 }
 
 int template_dispatch_func(stream* in, state* state, json_value* result) {
-    char* func_name;
-    int err = template_parse_identifier(in, &func_name);
+    int err = template_parse_ident(in, state);
     if (err != 0) {
-        goto cleanup;
+        return err;
     }
-
-    err = ERR_TEMPLATE_FUNC_UNKNOWN;
-cleanup:
-    if (func_name) {
-        free(func_name);
-    }
-    return err;
+    return ERR_TEMPLATE_FUNC_UNKNOWN;
 }
 
-int template_parse_literal(stream* in, json_value* result, unsigned char first) {
+int template_parse_literal(stream* in, state* state, json_value* result, unsigned char first) {
     unsigned char cp[4];
     size_t cp_len;
     int err = 0;
     double val;
     size_t seek_back = -1;
-    char* identifier;
     size_t identifier_len = 0;
     switch (first) {
         case 't':
-            err = template_parse_identifier(in, &identifier);
+            err = template_parse_ident(in, state);
             if (err != 0) {
                 return err;
             }
-            bool is_true = strcmp("rue", identifier) == 0;
+            bool is_true = strcmp("rue", state->ident) == 0;
             if (is_true) {
-                free(identifier);
                 result->ty = JSON_TY_TRUE;
                 return 0;
             }
-            identifier_len = strlen(identifier);
-            free(identifier);
+            identifier_len = strlen(state->ident);
             return stream_seek(in, -identifier_len - 1);
         case 'f':
-            err = template_parse_identifier(in, &identifier);
+            err = template_parse_ident(in, state);
             if (err != 0) {
                 return err;
             }
-            bool is_false = strcmp("alse", identifier) == 0;
+            bool is_false = strcmp("alse", state->ident) == 0;
             if (is_false) {
-                free(identifier);
                 result->ty = JSON_TY_FALSE;
                 return 0;
             }
-            identifier_len = strlen(identifier);
-            free(identifier);
+            identifier_len = strlen(state->ident);
             return stream_seek(in, -identifier_len - 1);
         case 'n':
-            err = template_parse_identifier(in, &identifier);
+            err = template_parse_ident(in, state);
             if (err != 0) {
                 return err;
             }
-            bool is_nil = strcmp("il", identifier) == 0;
+            bool is_nil = strcmp("il", state->ident) == 0;
             if (is_nil) {
-                free(identifier);
                 result->ty = JSON_TY_NULL;
                 return 0;
             }
-            identifier_len = strlen(identifier);
-            free(identifier);
+            identifier_len = strlen(state->ident);
             return stream_seek(in, -identifier_len - 1);
         case '"':
             err = template_parse_regular_str(in, &result->inner.str);
@@ -474,7 +453,7 @@ int template_dispatch_pipeline(stream* in, state* state, json_value* result) {
     if (cp_len != 1) {
         return ERR_TEMPLATE_INVALID_SYNTAX;
     }
-    err = template_parse_literal(in, result, cp[0]);
+    err = template_parse_literal(in, state, result, cp[0]);
     switch (err) {
         case 0:
             return 0;
