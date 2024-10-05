@@ -61,7 +61,7 @@ nutest_result template_strip_whitespace_multi(void) {
     return NUTEST_PASS;
 }
 
-nutest_result template_print_number(void) {
+nutest_result template_print_positive_number(void) {
     json_value val = JSON_NULL;
     const char* in = "b {{- 16 }}c";
     char* out;
@@ -70,6 +70,19 @@ nutest_result template_print_number(void) {
     NUTEST_ASSERT(err == 0);
     printf("out: %s\n", out);
     NUTEST_ASSERT(strcmp("b16c", out) == 0);
+    free(out);
+    return NUTEST_PASS;
+}
+
+nutest_result template_print_negative_number(void) {
+    json_value val = JSON_NULL;
+    const char* in = "b {{- -24 }}c";
+    char* out;
+    int err = template_eval(in, strlen(in), &val, &out);
+    printf("err: %d\n", err);
+    NUTEST_ASSERT(err == 0);
+    printf("out: %s\n", out);
+    NUTEST_ASSERT(strcmp("b-24c", out) == 0);
     free(out);
     return NUTEST_PASS;
 }
@@ -100,14 +113,39 @@ nutest_result template_print_backtick_str(void) {
     return NUTEST_PASS;
 }
 
+nutest_result template_func_unknown(void) {
+    json_value val = JSON_NULL;
+    const char* in = "xyz{{ banana }} h";
+    char* out;
+    int err = template_eval(in, strlen(in), &val, &out);
+    NUTEST_ASSERT(err == ERR_TEMPLATE_FUNC_UNKNOWN);
+    free(out);
+    return NUTEST_PASS;
+}
+
+nutest_result template_func_literal(void) {
+    json_value val = JSON_NULL;
+    const char* in = "{{ true }} {{ false }} {{ nil }}";
+    char* out;
+    int err = template_eval(in, strlen(in), &val, &out);
+    printf("err: %d\n", err);
+    NUTEST_ASSERT(err == 0);
+    NUTEST_ASSERT(strcmp("true false ", out) == 0);
+    free(out);
+    return NUTEST_PASS;
+}
+
 int main() {
     nutest_register(template_identity);
     nutest_register(template_empty_pipeline);
     nutest_register(template_strip_whitespace_pre);
     nutest_register(template_strip_whitespace_post);
     nutest_register(template_strip_whitespace_multi);
-    nutest_register(template_print_number);
+    nutest_register(template_print_positive_number);
+    nutest_register(template_print_negative_number);
     nutest_register(template_print_regular_str);
     nutest_register(template_print_backtick_str);
+    nutest_register(template_func_unknown);
+    nutest_register(template_func_literal);
     return nutest_run();
 }

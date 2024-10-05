@@ -21,10 +21,6 @@ typedef struct {
 
 #define BUF_DEFAULT_CAP 128
 
-#define ERR_TEMPLATE_INVALID_ESCAPE -900
-#define ERR_TEMPLATE_INVALID_SYNTAX -901
-#define ERR_TEMPLATE_BUFFER_OVERFLOW -902
-
 void buf_init(buf* b) {
     b->len = 0;
     b->cap = BUF_DEFAULT_CAP;
@@ -52,6 +48,8 @@ void buf_free(buf* b) {
 int sprintval(buf* b, json_value* val) {
     size_t expected;
     char print_buf[128];
+    const char* str_true = "true";
+    const char* str_false = "false";
     switch (val->ty) {
         case JSON_TY_NUMBER:
             expected = snprintf(print_buf, sizeof(print_buf), "%g", val->inner.num);
@@ -62,6 +60,12 @@ int sprintval(buf* b, json_value* val) {
             return 0;
         case JSON_TY_STRING:
             buf_append(b, val->inner.str, strlen(val->inner.str));
+            return 0;
+        case JSON_TY_TRUE:
+            buf_append(b, str_true, strlen(str_true));
+            return 0;
+        case JSON_TY_FALSE:
+            buf_append(b, str_false, strlen(str_false));
             return 0;
     }
     assert(0);
@@ -303,80 +307,199 @@ cleanup:
     return err;
 }
 
+int template_parse_identifier(stream* in, char** out) {
+    *out = NULL;
+    unsigned char cp[4];
+    size_t cp_len;
+    buf b;
+    int err = 0;
+    buf_init(&b);
+    while (true) {
+        err = stream_next_utf8_cp(in, cp, &cp_len);
+        if (err != 0) {
+            goto cleanup;
+        }
+        if (cp_len > 1) {
+            err = ERR_TEMPLATE_INVALID_SYNTAX;
+            goto cleanup;
+        }
+        if (!isalnum(cp[0])) {
+            *out = b.data;
+            buf_append(&b, "\0", 1);
+            err = stream_seek(in, -1);
+            goto cleanup;
+        }
+        buf_append(&b, (const char*)cp, 1);
+    }
+cleanup:
+    if (err != 0) {
+        buf_free(&b);
+    }
+    return err;
+}
+
+int template_dispatch_func(stream* in, state* state, json_value* result) {
+    char* func_name;
+    int err = template_parse_identifier(in, &func_name);
+    if (err != 0) {
+        goto cleanup;
+    }
+
+    err = ERR_TEMPLATE_FUNC_UNKNOWN;
+cleanup:
+    if (func_name) {
+        free(func_name);
+    }
+    return err;
+}
+
+int template_parse_literal(stream* in, json_value* result, unsigned char first) {
+    unsigned char cp[4];
+    size_t cp_len;
+    int err = 0;
+    double val;
+    size_t seek_back = -1;
+    char* identifier;
+    size_t identifier_len = 0;
+    switch (first) {
+        case 't':
+            err = template_parse_identifier(in, &identifier);
+            if (err != 0) {
+                return err;
+            }
+            bool is_true = strcmp("rue", identifier) == 0;
+            if (is_true) {
+                free(identifier);
+                result->ty = JSON_TY_TRUE;
+                return 0;
+            }
+            identifier_len = strlen(identifier);
+            free(identifier);
+            return stream_seek(in, -identifier_len - 1);
+        case 'f':
+            err = template_parse_identifier(in, &identifier);
+            if (err != 0) {
+                return err;
+            }
+            bool is_false = strcmp("alse", identifier) == 0;
+            if (is_false) {
+                free(identifier);
+                result->ty = JSON_TY_FALSE;
+                return 0;
+            }
+            identifier_len = strlen(identifier);
+            free(identifier);
+            return stream_seek(in, -identifier_len - 1);
+        case 'n':
+            err = template_parse_identifier(in, &identifier);
+            if (err != 0) {
+                return err;
+            }
+            bool is_nil = strcmp("il", identifier) == 0;
+            if (is_nil) {
+                free(identifier);
+                result->ty = JSON_TY_NULL;
+                return 0;
+            }
+            identifier_len = strlen(identifier);
+            free(identifier);
+            return stream_seek(in, -identifier_len - 1);
+        case '"':
+            err = template_parse_regular_str(in, &result->inner.str);
+            if (err != 0) {
+                return err;
+            }
+            result->ty = JSON_TY_STRING;
+            return 0;
+        case '`':
+            err = template_parse_backtick_str(in, &result->inner.str);
+            if (err != 0) {
+                return err;
+            }
+            result->ty = JSON_TY_STRING;
+            return 0;
+        case '-':
+            err = stream_next_utf8_cp(in, cp, &cp_len);
+            if (err != 0) {
+                return err;
+            }
+            if (cp_len != 1) {
+                return ERR_TEMPLATE_INVALID_SYNTAX;
+            }
+            if (!isdigit(cp[0]) && cp[0] != '+') {
+                return ERR_TEMPLATE_LITERAL_DASH;
+            }
+            seek_back = -2;
+            // delibarate fallthrough
+        case '+':
+        case '0':
+        case '1':
+        case '2':
+        case '3':
+        case '4':
+        case '5':
+        case '6':
+        case '7':
+        case '8':
+        case '9':
+            err = stream_seek(in, seek_back);
+            if (err != 0) {
+                return err;
+            }
+            printf("trying to parse a number\n");
+            err = template_parse_number(in, &val);
+            if (err != 0) {
+                return err;
+            }
+            result->ty = JSON_TY_NUMBER;
+            result->inner.num = val;
+            return 0;
+        default:
+            return ERR_TEMPLATE_NO_LITERAL;
+    }
+    return 0;
+}
+
 int template_dispatch_pipeline(stream* in, state* state, json_value* result) {
     unsigned char cp[4];
     size_t cp_len;
-    bool has_minus = false;
-    size_t seek_back = 0;
-    while (true) {
-        int err = stream_next_utf8_cp(in, cp, &cp_len);
+    int err = template_skip_whitespace(in);
+    if (err != 0) {
+        return err;
+    }
+    err = stream_next_utf8_cp(in, cp, &cp_len);
+    if (err != 0) {
+        return err;
+    }
+    if (cp_len != 1) {
+        return ERR_TEMPLATE_INVALID_SYNTAX;
+    }
+    err = template_parse_literal(in, result, cp[0]);
+    switch (err) {
+        case 0:
+            return 0;
+        case ERR_TEMPLATE_NO_LITERAL:
+            break;
+        case ERR_TEMPLATE_LITERAL_DASH:
+            return stream_seek(in, -2);
+        default:
+            return err;
+    }
+    if (isalpha(cp[0])) {
+        err = stream_seek(in, -1);
         if (err != 0) {
             return err;
         }
-        if (cp_len != 1) {
-            return ERR_TEMPLATE_INVALID_SYNTAX;
+        err = template_dispatch_func(in, state, result);
+        if (err != 0) {
+            return err;
         }
-        if (isspace(cp[0])) {
-            continue;
-        }
-        switch (cp[0]) {
-            case '}':
-                seek_back = 1;
-                if (has_minus) {
-                    seek_back += 1;
-                }
-                return stream_seek(in, -seek_back);
-            case '"':
-                err = template_parse_regular_str(in, &result->inner.str);
-                if (err != 0) {
-                    return err;
-                }
-                result->ty = JSON_TY_STRING;
-                return 0;
-            case '`':
-                err = template_parse_backtick_str(in, &result->inner.str);
-                if (err != 0) {
-                    return err;
-                }
-                result->ty = JSON_TY_STRING;
-                return 0;
-            case '-':
-                has_minus = true;
-                continue;
-            case '+':
-            case '0':
-            case '1':
-            case '2':
-            case '3':
-            case '4':
-            case '5':
-            case '6':
-            case '7':
-            case '8':
-            case '9':
-                seek_back = 1;
-                if (has_minus) {
-                    seek_back += 1;
-                }
-                err = stream_seek(in, -seek_back);
-                if (err != 0) {
-                    return err;
-                }
-                double val;
-                printf("trying to parse a number\n");
-                err = template_parse_number(in, &val);
-                if (err != 0) {
-                    return err;
-                }
-                result->ty = JSON_TY_NUMBER;
-                result->inner.num = val;
-                return 0;
-            default:
-                return ERR_TEMPLATE_INVALID_SYNTAX;
-        }
-        has_minus = false;
     }
-    return 0;
+    // when skip whitespace stops directly at the end
+    if (cp[0] == '}') {
+        return stream_seek(in, -1);
+    }
+    return ERR_TEMPLATE_INVALID_SYNTAX;
 }
 
 int template_end_pipeline(stream* in, state* state) {
