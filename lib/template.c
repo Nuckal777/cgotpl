@@ -71,12 +71,13 @@ int sprintval(buf* b, json_value* val) {
     assert(0);
 }
 
-#define STATE_IDENT_CAP 64
+#define STATE_IDENT_CAP 128
 
 typedef struct {
     json_value* dot;
     buf out;
     size_t out_nospace;
+    size_t depth;
     char ident[STATE_IDENT_CAP];
 } state;
 
@@ -179,13 +180,11 @@ int template_parse_number(stream* in, double* out) {
                 break;
             default:
                 buf[buf_idx] = 0;
-                printf("pre strtod %s\n", buf);
                 *out = strtod(buf, NULL);
                 if (errno == ERANGE) {
                     errno = 0;
                     return ERR_TEMPLATE_INVALID_SYNTAX;
                 }
-                printf("post strtod\n");
                 return stream_seek(in, -1);
         }
         buf[buf_idx] = cp[0];
@@ -331,14 +330,6 @@ int template_parse_ident(stream* in, state* state) {
     return ERR_TEMPLATE_BUFFER_OVERFLOW;
 }
 
-int template_dispatch_func(stream* in, state* state, json_value* result) {
-    int err = template_parse_ident(in, state);
-    if (err != 0) {
-        return err;
-    }
-    return ERR_TEMPLATE_FUNC_UNKNOWN;
-}
-
 int template_parse_literal(stream* in, state* state, json_value* result, unsigned char first) {
     unsigned char cp[4];
     size_t cp_len;
@@ -425,7 +416,6 @@ int template_parse_literal(stream* in, state* state, json_value* result, unsigne
             if (err != 0) {
                 return err;
             }
-            printf("trying to parse a number\n");
             err = template_parse_number(in, &val);
             if (err != 0) {
                 return err;
@@ -437,6 +427,258 @@ int template_parse_literal(stream* in, state* state, json_value* result, unsigne
             return ERR_TEMPLATE_NO_LITERAL;
     }
     return 0;
+}
+
+int template_parse_arg(stream* in, state* state, json_value* arg) {
+    *arg = JSON_NULL;
+    unsigned char cp[4];
+    size_t cp_len;
+    int err = template_skip_whitespace(in);
+    if (err != 0) {
+        return err;
+    }
+    err = stream_next_utf8_cp(in, cp, &cp_len);
+    if (err != 0) {
+        return err;
+    }
+    if (cp_len != 1) {
+        return ERR_TEMPLATE_INVALID_SYNTAX;
+    }
+    return template_parse_literal(in, state, arg, cp[0]);
+}
+
+int template_end_pipeline(stream* in, state* state, json_value* result) {
+    unsigned char cp[4];
+    size_t cp_len;
+    bool has_minus = false;
+    while (true) {
+        int err = stream_next_utf8_cp(in, cp, &cp_len);
+        if (err != 0) {
+            return err;
+        }
+        if (cp_len != 1) {
+            return ERR_TEMPLATE_INVALID_SYNTAX;
+        }
+        if (isspace(cp[0]) && !has_minus) {
+            continue;
+        }
+        switch (cp[0]) {
+            case '-':
+                has_minus = true;
+                continue;
+            case '}':
+                err = stream_next_utf8_cp(in, cp, &cp_len);
+                if (err != 0) {
+                    return err;
+                }
+                if (cp[0] != '}') {
+                    continue;
+                }
+                if (has_minus) {
+                    template_skip_whitespace(in);
+                }
+                if (result->ty == JSON_TY_NULL) {
+                    return 0;
+                }
+                return sprintval(&state->out, result);
+            default:
+                return ERR_TEMPLATE_INVALID_SYNTAX;
+        }
+    }
+}
+
+int template_parse_noop_ident(stream* in, state* state, char leading) {
+    unsigned char cp[4];
+    size_t cp_len;
+    int err = 0;
+    state->ident[0] = leading;
+    for (size_t i = 1; i < STATE_IDENT_CAP; i++) {
+        err = stream_next_utf8_cp(in, cp, &cp_len);
+        if (err != 0) {
+            return err;
+        }
+        if (cp_len > 1) {
+            return ERR_TEMPLATE_INVALID_SYNTAX;
+        }
+        bool keep = isalnum(cp[0]) || cp[0] == '.' || cp[0] == '$' || cp[0] == '|' || cp[0] == '(' || cp[0] == ')';
+        if (!keep) {
+            state->ident[i] = 0;
+            return stream_seek(in, -1);
+        }
+        state->ident[i] = cp[0];
+    }
+    return ERR_TEMPLATE_BUFFER_OVERFLOW;
+}
+
+int template_pipeline_noop(stream* in, state* state, size_t start_depth) {
+    unsigned char cp[4];
+    size_t cp_len;
+    int err = stream_next_utf8_cp(in, cp, &cp_len);
+    if (err != 0) {
+        return err;
+    }
+    if (cp_len != 1) {
+        return ERR_TEMPLATE_INVALID_SYNTAX;
+    }
+    if (cp[0] != '-') {
+        err = stream_seek(in, -1);
+        if (err != 0) {
+            return err;
+        }
+    }
+    size_t ident_count = 0;
+    while (true) {
+        err = template_skip_whitespace(in);
+        if (err != 0) {
+            return err;
+        }
+        err = stream_next_utf8_cp(in, cp, &cp_len);
+        if (err != 0) {
+            return err;
+        }
+        if (cp_len != 1) {
+            return ERR_TEMPLATE_INVALID_SYNTAX;
+        }
+        char leading = (char)cp[0];
+        char* str;
+        switch (leading) {
+            case '"':
+                err = template_parse_regular_str(in, &str);
+                if (err != 0) {
+                    return 0;
+                }
+                free(str);
+                break;
+            case '`':
+                err = template_parse_backtick_str(in, &str);
+                if (err != 0) {
+                    return 0;
+                }
+                free(str);
+                break;
+            case '-':
+                err = stream_next_utf8_cp(in, cp, &cp_len);
+                if (err != 0) {
+                    return err;
+                }
+                if (cp_len != 1 || cp[0] != '}') {
+                    return ERR_TEMPLATE_INVALID_SYNTAX;
+                }
+                // delibarate fallthrough
+            case '}':
+                err = stream_next_utf8_cp(in, cp, &cp_len);
+                if (err != 0) {
+                    return err;
+                }
+                if (cp_len != 1 || cp[0] != '}') {
+                    return ERR_TEMPLATE_INVALID_SYNTAX;
+                }
+                return 0;
+            default:
+                err = template_parse_noop_ident(in, state, leading);
+                if (err != 0) {
+                    return err;
+                }
+                if (strcmp("if", state->ident) == 0) {
+                    if (ident_count > 0) {
+                        return ERR_TEMPLATE_INVALID_SYNTAX;
+                    }
+                    state->depth++;
+                } else if (strcmp("end", state->ident) == 0) {
+                    if (ident_count > 0) {
+                        return ERR_TEMPLATE_INVALID_SYNTAX;
+                    }
+                    state->depth--;
+                    if (state->depth == start_depth - 1) {
+                        return ERR_TEMPLATE_KEYWORD_END;
+                    }
+                }
+                break;
+        }
+        ident_count++;
+    }
+}
+
+int template_noop(stream* in, state* state) {
+    unsigned char cp[4];
+    size_t cp_len;
+    size_t start_depth = state->depth;
+    while (true) {
+        int err = stream_next_utf8_cp(in, cp, &cp_len);
+        if (err != 0) {
+            return err;
+        }
+        if (cp[0] != '{') {
+            continue;
+        }
+        err = stream_next_utf8_cp(in, cp, &cp_len);
+        if (err != 0) {
+            return err;
+        }
+        if (cp[0] != '{') {
+            continue;
+        }
+        err = template_pipeline_noop(in, state, start_depth);
+        if (err == ERR_TEMPLATE_KEYWORD_END) {
+            return 0;
+        }
+        if (err != 0) {
+            return err;
+        }
+    }
+}
+
+int template_plain(stream* in, state* state);
+
+int template_dispatch_keyword(stream* in, state* state) {
+    int err = template_parse_ident(in, state);
+    if (err != 0) {
+        return err;
+    }
+    if (strcmp("if", state->ident) == 0) {
+        json_value cond;
+        err = template_parse_arg(in, state, &cond);
+        if (err != 0) {
+            return err;
+        }
+        state->depth++;
+        json_value nothing = JSON_NULL;
+        if (cond.ty == JSON_TY_TRUE) {
+            err = template_end_pipeline(in, state, &nothing);
+            if (err != 0) {
+                return err;
+            }
+            err = template_plain(in, state);
+            if (err != 0) {
+                return err;
+            }
+        } else {
+            err = template_end_pipeline(in, state, &nothing);
+            if (err != 0) {
+                return err;
+            }
+            err = template_noop(in, state);
+            if (err != 0) {
+                return err;
+            }
+        }
+        return 0;
+    }
+    if (strcmp("end", state->ident) == 0) {
+        // only used in the non-noop case
+        // in the noop case template_noop
+        // takes care of the matching "end"
+        return ERR_TEMPLATE_KEYWORD_END;
+    }
+    return ERR_TEMPLATE_KEYWORD_UNKNOWN;
+}
+
+int template_dispatch_func(stream* in, state* state, json_value* result) {
+    int err = template_parse_ident(in, state);
+    if (err != 0) {
+        return err;
+    }
+    return ERR_TEMPLATE_FUNC_UNKNOWN;
 }
 
 int template_dispatch_pipeline(stream* in, state* state, json_value* result) {
@@ -469,6 +711,19 @@ int template_dispatch_pipeline(stream* in, state* state, json_value* result) {
         if (err != 0) {
             return err;
         }
+        err = template_dispatch_keyword(in, state);
+        switch (err) {
+            case 0:
+                return 0;
+            case ERR_TEMPLATE_KEYWORD_UNKNOWN:
+                break;
+            default:
+                return err;
+        }
+        err = stream_seek(in, -strlen(state->ident));
+        if (err != 0) {
+            return err;
+        }
         err = template_dispatch_func(in, state, result);
         if (err != 0) {
             return err;
@@ -481,53 +736,18 @@ int template_dispatch_pipeline(stream* in, state* state, json_value* result) {
     return ERR_TEMPLATE_INVALID_SYNTAX;
 }
 
-int template_end_pipeline(stream* in, state* state) {
+int template_invoke_pipeline(stream* in, state* state) {
     json_value result = JSON_NULL;
     int err = template_dispatch_pipeline(in, state, &result);
-    if (err != 0) {
-        goto cleanup;
-    }
-    unsigned char cp[4];
-    size_t cp_len;
-    bool has_minus = false;
-    while (true) {
-        int err = stream_next_utf8_cp(in, cp, &cp_len);
-        if (err != 0) {
+    switch (err) {
+        case 0:
+            break;
+        case ERR_TEMPLATE_KEYWORD_END:
             goto cleanup;
-        }
-        if (cp_len != 1) {
-            err = ERR_TEMPLATE_INVALID_SYNTAX;
+        default:
             goto cleanup;
-        }
-        if (isspace(cp[0]) && !has_minus) {
-            continue;
-        }
-        switch (cp[0]) {
-            case '-':
-                has_minus = true;
-                continue;
-            case '}':
-                err = stream_next_utf8_cp(in, cp, &cp_len);
-                if (err != 0) {
-                    return err;
-                }
-                if (cp[0] != '}') {
-                    continue;
-                }
-                if (has_minus) {
-                    template_skip_whitespace(in);
-                }
-                if (result.ty == JSON_TY_NULL) {
-                    return 0;
-                }
-                printf("sprintval\n");
-                err = sprintval(&state->out, &result);
-                goto cleanup;
-            default:
-                err = ERR_TEMPLATE_INVALID_SYNTAX;
-                goto cleanup;
-        }
     }
+    err = template_end_pipeline(in, state, &result);
 cleanup:
     json_value_free(&result);
     return err;
@@ -542,7 +762,7 @@ int template_start_pipeline(stream* in, state* state) {
     }
     if (cp[0] != '-') {
         stream_seek(in, -cp_len);
-        return template_end_pipeline(in, state);
+        return template_invoke_pipeline(in, state);
     }
     size_t off = cp_len;
     err = stream_next_utf8_cp(in, cp, &cp_len);
@@ -551,10 +771,10 @@ int template_start_pipeline(stream* in, state* state) {
     }
     if (cp[0] != ' ') {
         stream_seek(in, -cp_len - off);
-        return template_end_pipeline(in, state);
+        return template_invoke_pipeline(in, state);
     }
     state->out.len = state->out_nospace;
-    return template_end_pipeline(in, state);
+    return template_invoke_pipeline(in, state);
 }
 
 int template_plain(stream* in, state* state) {
@@ -587,6 +807,10 @@ int template_plain(stream* in, state* state) {
             continue;
         }
         err = template_start_pipeline(in, state);
+        if (err == ERR_TEMPLATE_KEYWORD_END && state->depth > 0) {
+            state->depth--;
+            return 0;
+        }
         if (err != 0) {
             return err;
         }
@@ -603,6 +827,7 @@ int template_eval(const char* tpl, size_t n, json_value* dot, char** out) {
     stream_open_memory(&in, tpl, n);
     state state;
     state.dot = dot;
+    state.depth = 0;
     buf_init(&state.out);
     int err = template_plain(&in, &state);
     buf_append(&state.out, "\0", 1);
