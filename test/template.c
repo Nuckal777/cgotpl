@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "json.h"
+#include "stream.h"
 #include "test.h"
 
 nutest_result template_identity(void) {
@@ -189,6 +190,76 @@ nutest_result template_if_nested(void) {
     return NUTEST_PASS;
 }
 
+nutest_result template_dot_expr(void) {
+    json_value val;
+    val.ty = JSON_TY_NUMBER;
+    val.inner.num = 77;
+    const char* in = "{{ . }}";
+    char* out;
+    int err = template_eval(in, strlen(in), &val, &out);
+    NUTEST_ASSERT(err == 0);
+    NUTEST_ASSERT(strcmp("77", out) == 0);
+    free(out);
+    json_value_free(&val);
+    return NUTEST_PASS;
+}
+
+int make_json_val(json_value* val, const char* json) {
+    stream st;
+    stream_open_memory(&st, json, strlen(json));
+    int err = json_parse(&st, val);
+    stream_close(&st);
+    return err;
+}
+
+nutest_result template_path_expr(void) {
+    json_value val;
+    int err = make_json_val(&val, "{\"left\": \"right\"}");
+    const char* in = "{{ .left }}";
+    char* out;
+    err = template_eval(in, strlen(in), &val, &out);
+    NUTEST_ASSERT(err == 0);
+    NUTEST_ASSERT(strcmp("right", out) == 0);
+    free(out);
+    json_value_free(&val);
+    return NUTEST_PASS;
+}
+
+nutest_result template_path_expr_invalid_syntax(void) {
+    json_value val;
+    int err = make_json_val(&val, "{\"left\": \"right\"}");
+    const char* in = "{{ .left. }}";
+    char* out;
+    err = template_eval(in, strlen(in), &val, &out);
+    NUTEST_ASSERT(err == ERR_TEMPLATE_INVALID_SYNTAX);
+    free(out);
+    json_value_free(&val);
+    return NUTEST_PASS;
+}
+
+nutest_result template_path_expr_no_object(void) {
+    json_value val = JSON_NULL;
+    const char* in = "{{ .down }}";
+    char* out;
+    int err = template_eval(in, strlen(in), &val, &out);
+    NUTEST_ASSERT(err == ERR_TEMPLATE_NO_OBJECT);
+    free(out);
+    json_value_free(&val);
+    return NUTEST_PASS;
+}
+
+nutest_result template_path_expr_key_unknown(void) {
+    json_value val;
+    int err = make_json_val(&val, "{\"left\": \"right\"}");
+    const char* in = "{{ .up }}";
+    char* out;
+    err = template_eval(in, strlen(in), &val, &out);
+    NUTEST_ASSERT(err == ERR_TEMPLATE_KEY_UNKNOWN);
+    free(out);
+    json_value_free(&val);
+    return NUTEST_PASS;
+}
+
 int main() {
     nutest_register(template_identity);
     nutest_register(template_empty_pipeline);
@@ -207,5 +278,10 @@ int main() {
     nutest_register(template_if_true_nested);
     nutest_register(template_if_false);
     nutest_register(template_if_nested);
+    nutest_register(template_dot_expr);
+    nutest_register(template_path_expr);
+    nutest_register(template_path_expr_invalid_syntax);
+    nutest_register(template_path_expr_no_object);
+    nutest_register(template_path_expr_key_unknown);
     return nutest_run();
 }

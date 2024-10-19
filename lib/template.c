@@ -11,6 +11,7 @@
 
 #include "encode.h"
 #include "json.h"
+#include "map.h"
 #include "stream.h"
 
 typedef struct {
@@ -71,15 +72,41 @@ int sprintval(buf* b, json_value* val) {
     assert(0);
 }
 
+bool is_empty(json_value* val) {
+    switch (val->ty) {
+        case JSON_TY_NULL:
+        case JSON_TY_FALSE:
+            return true;
+        case JSON_TY_TRUE:
+            return false;
+        case JSON_TY_NUMBER:
+            return val->inner.num == 0.0;
+        case JSON_TY_STRING:
+            return strlen(val->inner.str) == 0;
+        case JSON_TY_ARRAY:
+            return val->inner.arr.len == 0;
+        case JSON_TY_OBJECT:
+            return val->inner.obj.count == 0;
+    }
+    assert(0);
+}
+
 #define STATE_IDENT_CAP 128
 
 typedef struct {
+    json_value scratch_val;
     json_value* dot;
     buf out;
     size_t out_nospace;
     size_t depth;
     char ident[STATE_IDENT_CAP];
 } state;
+
+json_value state_set_scratch(state* state, json_value val) {
+    json_value_free(&state->scratch_val);
+    state->scratch_val = val;
+    return state->scratch_val;
+}
 
 int template_skip_whitespace(stream* in) {
     unsigned char cp[4];
@@ -330,6 +357,51 @@ int template_parse_ident(stream* in, state* state) {
     return ERR_TEMPLATE_BUFFER_OVERFLOW;
 }
 
+int template_parse_path_expr(stream* in, state* state, json_value* result, size_t depth) {
+    *result = JSON_NULL;
+    int err = template_parse_ident(in, state);
+    if (err != 0) {
+        return err;
+    }
+    unsigned char cp[4];
+    size_t cp_len;
+    err = stream_next_utf8_cp(in, cp, &cp_len);
+    if (err != 0) {
+        return err;
+    }
+    if (cp_len != 1) {
+        return ERR_TEMPLATE_INVALID_SYNTAX;
+    }
+    if (strlen(state->ident) == 0) {
+        if (depth == 0) {
+            *result = *state->dot;
+            return 0;
+        } else {
+            return ERR_TEMPLATE_INVALID_SYNTAX;
+        }
+    }
+    if (state->dot->ty != JSON_TY_OBJECT) {
+        return ERR_TEMPLATE_NO_OBJECT;
+    }
+    json_value* next;
+    int found = hashmap_get(&state->dot->inner.obj, state->ident, (const void**)&next);
+    if (!found) {
+        return ERR_TEMPLATE_KEY_UNKNOWN;
+    }
+    if (cp[0] == '.') {
+        json_value* current = state->dot;
+        state->dot = next;
+        err = template_parse_path_expr(in, state, result, depth + 1);
+        state->dot = current;
+        return err;
+    }
+    if (isspace(cp[0])) {
+        *result = *next;
+        return 0;
+    }
+    return ERR_TEMPLATE_INVALID_SYNTAX;
+}
+
 int template_parse_literal(stream* in, state* state, json_value* result, unsigned char first) {
     unsigned char cp[4];
     size_t cp_len;
@@ -337,6 +409,7 @@ int template_parse_literal(stream* in, state* state, json_value* result, unsigne
     double val;
     size_t seek_back = -1;
     size_t identifier_len = 0;
+    json_value out = JSON_NULL;
     switch (first) {
         case 't':
             err = template_parse_ident(in, state);
@@ -345,7 +418,8 @@ int template_parse_literal(stream* in, state* state, json_value* result, unsigne
             }
             bool is_true = strcmp("rue", state->ident) == 0;
             if (is_true) {
-                result->ty = JSON_TY_TRUE;
+                out.ty = JSON_TY_TRUE;
+                *result = state_set_scratch(state, out);
                 return 0;
             }
             identifier_len = strlen(state->ident);
@@ -357,7 +431,8 @@ int template_parse_literal(stream* in, state* state, json_value* result, unsigne
             }
             bool is_false = strcmp("alse", state->ident) == 0;
             if (is_false) {
-                result->ty = JSON_TY_FALSE;
+                out.ty = JSON_TY_FALSE;
+                *result = state_set_scratch(state, out);
                 return 0;
             }
             identifier_len = strlen(state->ident);
@@ -369,24 +444,27 @@ int template_parse_literal(stream* in, state* state, json_value* result, unsigne
             }
             bool is_nil = strcmp("il", state->ident) == 0;
             if (is_nil) {
-                result->ty = JSON_TY_NULL;
+                out.ty = JSON_TY_NULL;
+                *result = state_set_scratch(state, out);
                 return 0;
             }
             identifier_len = strlen(state->ident);
             return stream_seek(in, -identifier_len - 1);
         case '"':
-            err = template_parse_regular_str(in, &result->inner.str);
+            err = template_parse_regular_str(in, &out.inner.str);
             if (err != 0) {
                 return err;
             }
-            result->ty = JSON_TY_STRING;
+            out.ty = JSON_TY_STRING;
+            *result = state_set_scratch(state, out);
             return 0;
         case '`':
-            err = template_parse_backtick_str(in, &result->inner.str);
+            err = template_parse_backtick_str(in, &out.inner.str);
             if (err != 0) {
                 return err;
             }
-            result->ty = JSON_TY_STRING;
+            out.ty = JSON_TY_STRING;
+            *result = state_set_scratch(state, out);
             return 0;
         case '-':
             err = stream_next_utf8_cp(in, cp, &cp_len);
@@ -420,9 +498,12 @@ int template_parse_literal(stream* in, state* state, json_value* result, unsigne
             if (err != 0) {
                 return err;
             }
-            result->ty = JSON_TY_NUMBER;
-            result->inner.num = val;
+            out.ty = JSON_TY_NUMBER;
+            out.inner.num = val;
+            *result = state_set_scratch(state, out);
             return 0;
+        case '.':
+            return template_parse_path_expr(in, state, result, 0);
         default:
             return ERR_TEMPLATE_NO_LITERAL;
     }
@@ -643,12 +724,12 @@ int template_dispatch_keyword(stream* in, state* state) {
         }
         state->depth++;
         json_value nothing = JSON_NULL;
-        if (cond.ty == JSON_TY_TRUE) {
+        if (is_empty(&cond)) {
             err = template_end_pipeline(in, state, &nothing);
             if (err != 0) {
                 return err;
             }
-            err = template_plain(in, state);
+            err = template_noop(in, state);
             if (err != 0) {
                 return err;
             }
@@ -657,7 +738,7 @@ int template_dispatch_keyword(stream* in, state* state) {
             if (err != 0) {
                 return err;
             }
-            err = template_noop(in, state);
+            err = template_plain(in, state);
             if (err != 0) {
                 return err;
             }
@@ -739,17 +820,11 @@ int template_dispatch_pipeline(stream* in, state* state, json_value* result) {
 int template_invoke_pipeline(stream* in, state* state) {
     json_value result = JSON_NULL;
     int err = template_dispatch_pipeline(in, state, &result);
-    switch (err) {
-        case 0:
-            break;
-        case ERR_TEMPLATE_KEYWORD_END:
-            goto cleanup;
-        default:
-            goto cleanup;
+    if (err == 0) {
+        return template_end_pipeline(in, state, &result);
     }
-    err = template_end_pipeline(in, state, &result);
-cleanup:
-    json_value_free(&result);
+    // intentionally skips reading }} in
+    // case of ERR_TEMPLATE_KEYWORD_END
     return err;
 }
 
@@ -828,10 +903,12 @@ int template_eval(const char* tpl, size_t n, json_value* dot, char** out) {
     state state;
     state.dot = dot;
     state.depth = 0;
+    state.scratch_val = JSON_NULL;
     buf_init(&state.out);
     int err = template_plain(&in, &state);
     buf_append(&state.out, "\0", 1);
     *out = state.out.data;
+    json_value_free(&state.scratch_val);
     stream_close(&in);
     return err;
 }

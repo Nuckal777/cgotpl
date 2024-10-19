@@ -13,6 +13,8 @@
 #define ERR_TEMPLATE_LITERAL_DASH -905
 #define ERR_TEMPLATE_NO_LITERAL -906
 #define ERR_TEMPLATE_KEYWORD_END -907
+#define ERR_TEMPLATE_NO_OBJECT -908
+#define ERR_TEMPLATE_KEY_UNKNOWN -908
 
 int template_eval(const char* tpl, size_t n, json_value* dot, char** out);
 

@@ -145,7 +145,7 @@ int hashmap_get(hashmap* map, const void* key, const void** out) {
 void hashmap_iter(hashmap* map, void* userdata, void (*f)(entry*, void*)) {
     for (size_t i = 0; i < map->len; i++) {
         bucket* b = &map->data[i];
-        for (size_t j = 0; j < b->len; b++) {
+        for (size_t j = 0; j < b->len; j++) {
             f(&b->data[j], userdata);
         }
     }
