@@ -1,5 +1,7 @@
 project(cgotpl LANGUAGES C)
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 include(CTest)
 
 set(C_STANDARD 99)

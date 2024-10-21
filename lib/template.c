@@ -716,6 +716,7 @@ int template_dispatch_keyword(stream* in, state* state) {
     if (err != 0) {
         return err;
     }
+    json_value nothing = JSON_NULL;
     if (strcmp("if", state->ident) == 0) {
         json_value cond;
         err = template_parse_arg(in, state, &cond);
@@ -723,7 +724,6 @@ int template_dispatch_keyword(stream* in, state* state) {
             return err;
         }
         state->depth++;
-        json_value nothing = JSON_NULL;
         if (is_empty(&cond)) {
             err = template_end_pipeline(in, state, &nothing);
             if (err != 0) {
@@ -743,6 +743,58 @@ int template_dispatch_keyword(stream* in, state* state) {
                 return err;
             }
         }
+        return 0;
+    }
+    if (strcmp("range", state->ident) == 0) {
+        json_value arg;
+        err = template_parse_arg(in, state, &arg);
+        if (err != 0) {
+            return err;
+        }
+        if (arg.ty != JSON_TY_ARRAY) {
+            return ERR_TEMPLATE_NO_LIST;
+        }
+        state->depth++;
+        if (arg.inner.arr.len == 0) {
+            err = template_end_pipeline(in, state, &nothing);
+            if (err != 0) {
+                return err;
+            }
+            err = template_noop(in, state);
+            if (err != 0) {
+                return err;
+            }
+            return 0;
+        }
+        json_value* current = state->dot;
+        long pre_pos;
+        err = stream_pos(in, &pre_pos);
+        if (err != 0) {
+            return err;
+        }
+        for (size_t i = 0; i < arg.inner.arr.len; i++) {
+            err = template_end_pipeline(in, state, &nothing);
+            if (err != 0) {
+                return err;
+            }
+            state->dot = &arg.inner.arr.data[i];
+            err = template_plain(in, state);
+            if (err != 0) {
+                return err;
+            }
+            if (i != arg.inner.arr.len - 1) {
+                long post_pos;
+                err = stream_pos(in, &post_pos);
+                if (err != 0) {
+                    return err;
+                }
+                err = stream_seek(in, pre_pos - post_pos);
+                if (err != 0) {
+                    return err;
+                }
+            }
+        }
+        state->dot = current;
         return 0;
     }
     if (strcmp("end", state->ident) == 0) {

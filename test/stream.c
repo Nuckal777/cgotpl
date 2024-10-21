@@ -1,4 +1,5 @@
 #include "stream.h"
+
 #include <stdio.h>
 #include <string.h>
 
@@ -18,7 +19,7 @@ nutest_result stream_memory() {
     NUTEST_ASSERT(stream_read(&st, &out) == 0);
     NUTEST_ASSERT(out == 10);
     NUTEST_ASSERT(stream_read(&st, &out) == EOF);
-    stream_close(&st);
+    NUTEST_ASSERT(stream_close(&st) == 0);
     return NUTEST_PASS;
 }
 
@@ -41,7 +42,47 @@ nutest_result stream_file() {
     NUTEST_ASSERT(stream_read(&st, &out) == 0);
     NUTEST_ASSERT(out == 0);
     NUTEST_ASSERT(stream_read(&st, &out) == EOF);
-    stream_close(&st);
+    NUTEST_ASSERT(stream_close(&st) == 0);
+    remove(path);
+    return NUTEST_PASS;
+}
+
+nutest_result stream_memory_pos() {
+    const char data[4] = {'a', 'b', 'c', 'd'};
+    stream st;
+    stream_open_memory(&st, data, sizeof(data));
+    unsigned char out;
+    int err = stream_read(&st, &out);
+    NUTEST_ASSERT(err == 0);
+    err = stream_read(&st, &out);
+    NUTEST_ASSERT(err == 0);
+    long pos;
+    err = stream_pos(&st, &pos);
+    NUTEST_ASSERT(err == 0);
+    NUTEST_ASSERT(pos == 2);
+    return NUTEST_PASS;
+}
+
+nutest_result stream_file_pos() {
+    const char* path = "stream.txt";
+    remove(path);
+    FILE* file = fopen(path, "wb");
+    NUTEST_ASSERT(file);
+    size_t written = fwrite("applepie", sizeof(char), 9, file);
+    NUTEST_ASSERT(written == 9);
+    NUTEST_ASSERT(fclose(file) == 0);
+
+    stream st;
+    NUTEST_ASSERT(stream_open_file(&st, path) == 0);
+    unsigned char out;
+    NUTEST_ASSERT(stream_read(&st, &out) == 0);
+    NUTEST_ASSERT(out == 'a');
+    NUTEST_ASSERT(stream_read(&st, &out) == 0);
+    NUTEST_ASSERT(out == 'p');
+    long pos;
+    NUTEST_ASSERT(stream_pos(&st, &pos) == 0);
+    NUTEST_ASSERT(pos == 2);
+    NUTEST_ASSERT(stream_close(&st) == 0);
     remove(path);
     return NUTEST_PASS;
 }
@@ -72,7 +113,7 @@ nutest_result stream_utf8_single(void) {
     err = stream_next_utf8_cp(&st, out, &len);
     NUTEST_ASSERT(err == EOF);
     NUTEST_ASSERT(len == 0);
-    stream_close(&st);
+    NUTEST_ASSERT(stream_close(&st) == 0);
     return NUTEST_PASS;
 }
 
@@ -105,7 +146,7 @@ nutest_result stream_utf8_multi(void) {
     NUTEST_ASSERT(out[1] == 0x90);
     NUTEST_ASSERT(out[2] == 0x8D);
     NUTEST_ASSERT(out[3] == 0x88);
-    stream_close(&st);
+    NUTEST_ASSERT(stream_close(&st) == 0);
     return NUTEST_PASS;
 }
 
@@ -120,7 +161,7 @@ nutest_result stream_utf8_invalid(void) {
     NUTEST_ASSERT(err == 0);
     err = stream_next_utf8_cp(&st, out, &len);
     NUTEST_ASSERT(err == ERR_INVALID_UTF8);
-    stream_close(&st);
+    NUTEST_ASSERT(stream_close(&st) == 0);
     return NUTEST_PASS;
 }
 
@@ -133,7 +174,7 @@ nutest_result stream_utf8_overlong_4(void) {
     int err;
     err = stream_next_utf8_cp(&st, out, &len);
     NUTEST_ASSERT(err == ERR_INVALID_UTF8);
-    stream_close(&st);
+    NUTEST_ASSERT(stream_close(&st) == 0);
     return NUTEST_PASS;
 }
 
@@ -146,13 +187,15 @@ nutest_result stream_utf8_overlong_2(void) {
     int err;
     err = stream_next_utf8_cp(&st, out, &len);
     NUTEST_ASSERT(err == ERR_INVALID_UTF8);
-    stream_close(&st);
+    NUTEST_ASSERT(stream_close(&st) == 0);
     return NUTEST_PASS;
 }
 
 int main() {
     nutest_register(stream_memory);
     nutest_register(stream_file);
+    nutest_register(stream_memory_pos);
+    nutest_register(stream_file_pos);
     nutest_register(stream_utf8_single);
     nutest_register(stream_utf8_multi);
     nutest_register(stream_utf8_invalid);

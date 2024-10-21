@@ -14,19 +14,39 @@ int stream_open_file(stream* stream, const char* filename) {
     stream->ty = STREAM_FILE;
     stream->inner.file = fopen(filename, "rb");
     if (!stream->inner.file) {
-        return errno;
+        int result = errno;
+        errno = 0;
+        return result;
     }
     return 0;
 }
 
 int stream_close(stream* stream) {
-    if (stream->ty != STREAM_FILE) {
+    if (stream->ty == STREAM_MEMORY) {
         return 0;
     }
-    if (!fclose(stream->inner.file)) {
-        return errno;
+    if (stream->ty == STREAM_FILE) {
+        return fclose(stream->inner.file);
     }
-    return 0;
+    assert(0);
+}
+
+int stream_pos(stream* stream, long* pos) {
+    int result = 0;
+    switch (stream->ty) {
+        case STREAM_MEMORY:
+            *pos = stream->inner.data.pos;
+            return 0;
+        case STREAM_FILE:
+            *pos = ftell(stream->inner.file);
+            if (*pos == -1) {
+                result = errno;
+                errno = 0;
+                return result;
+            }
+            return 0;
+    }
+    assert(0);
 }
 
 int stream_read(stream* stream, unsigned char* out) {
