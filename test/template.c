@@ -61,6 +61,17 @@ nutest_result template_strip_whitespace_multi(void) {
     return NUTEST_PASS;
 }
 
+nutest_result template_strip_whitespace_pipeline(void) {
+    json_value val = JSON_NULL;
+    const char* in = "{{ 7 }} {{- }}";
+    char* out;
+    int err = template_eval(in, strlen(in), &val, &out);
+    NUTEST_ASSERT(err == 0);
+    NUTEST_ASSERT(strcmp("7", out) == 0);
+    free(out);
+    return NUTEST_PASS;
+}
+
 nutest_result template_print_positive_number(void) {
     json_value val = JSON_NULL;
     const char* in = "b {{- 16 }}c";
@@ -157,7 +168,7 @@ nutest_result template_if_true(void) {
     return NUTEST_PASS;
 }
 
-nutest_result template_if_true_nested(void) {
+nutest_result template_if_nested(void) {
     json_value val = JSON_NULL;
     const char* in = "{{ if true -}} {{ if true -}} nissa {{- end }} {{- end }}";
     char* out;
@@ -179,7 +190,7 @@ nutest_result template_if_false(void) {
     return NUTEST_PASS;
 }
 
-nutest_result template_if_nested(void) {
+nutest_result template_if_noop(void) {
     json_value val = JSON_NULL;
     const char* in = "{{ if false -}} {{ if true }} paris {{ end }} {{- end }}london";
     char* out;
@@ -194,7 +205,7 @@ nutest_result template_dot_expr(void) {
     json_value val;
     val.ty = JSON_TY_NUMBER;
     val.inner.num = 77;
-    const char* in = "{{ . }}";
+    const char* in = "{{.}}";
     char* out;
     int err = template_eval(in, strlen(in), &val, &out);
     NUTEST_ASSERT(err == 0);
@@ -215,6 +226,7 @@ int make_json_val(json_value* val, const char* json) {
 nutest_result template_path_expr(void) {
     json_value val;
     int err = make_json_val(&val, "{\"left\": \"right\"}");
+    NUTEST_ASSERT(err == 0);
     const char* in = "{{ .left }}";
     char* out;
     err = template_eval(in, strlen(in), &val, &out);
@@ -228,6 +240,7 @@ nutest_result template_path_expr(void) {
 nutest_result template_path_expr_invalid_syntax(void) {
     json_value val;
     int err = make_json_val(&val, "{\"left\": \"right\"}");
+    NUTEST_ASSERT(err == 0);
     const char* in = "{{ .left. }}";
     char* out;
     err = template_eval(in, strlen(in), &val, &out);
@@ -251,10 +264,53 @@ nutest_result template_path_expr_no_object(void) {
 nutest_result template_path_expr_key_unknown(void) {
     json_value val;
     int err = make_json_val(&val, "{\"left\": \"right\"}");
+    NUTEST_ASSERT(err == 0);
     const char* in = "{{ .up }}";
     char* out;
     err = template_eval(in, strlen(in), &val, &out);
     NUTEST_ASSERT(err == ERR_TEMPLATE_KEY_UNKNOWN);
+    free(out);
+    json_value_free(&val);
+    return NUTEST_PASS;
+}
+
+nutest_result template_range_simple(void) {
+    json_value val;
+    int err = make_json_val(&val, "{\"list\": [1,2,3]}");
+    NUTEST_ASSERT(err == 0);
+    const char* in = "{{ range .list }}{{ . }}{{end}}";
+    char* out;
+    err = template_eval(in, strlen(in), &val, &out);
+    NUTEST_ASSERT(err == 0);
+    NUTEST_ASSERT(strcmp("123", out) == 0);
+    free(out);
+    json_value_free(&val);
+    return NUTEST_PASS;
+}
+
+nutest_result template_range_nested(void) {
+    json_value val;
+    int err = make_json_val(&val, "[[\"a\",\"b\"],[\"c\",\"d\"]]");
+    NUTEST_ASSERT(err == 0);
+    const char* in = "{{ range . }} {{ range . -}} {{ . }} {{- end }} {{- end }}";
+    char* out;
+    err = template_eval(in, strlen(in), &val, &out);
+    NUTEST_ASSERT(err == 0);
+    NUTEST_ASSERT(strcmp(" ab cd", out) == 0);
+    free(out);
+    json_value_free(&val);
+    return NUTEST_PASS;
+}
+
+nutest_result template_range_noop(void) {
+    json_value val;
+    int err = make_json_val(&val, "[[]]");
+    NUTEST_ASSERT(err == 0);
+    const char* in = "x {{- range . }}{{ range . -}} yz {{- end }}{{ end }}";
+    char* out;
+    err = template_eval(in, strlen(in), &val, &out);
+    NUTEST_ASSERT(err == 0);
+    NUTEST_ASSERT(strcmp("x", out) == 0);
     free(out);
     json_value_free(&val);
     return NUTEST_PASS;
@@ -266,6 +322,7 @@ int main() {
     nutest_register(template_strip_whitespace_pre);
     nutest_register(template_strip_whitespace_post);
     nutest_register(template_strip_whitespace_multi);
+    nutest_register(template_strip_whitespace_pipeline);
     nutest_register(template_print_positive_number);
     nutest_register(template_print_negative_number);
     nutest_register(template_print_regular_str);
@@ -275,13 +332,16 @@ int main() {
     nutest_register(template_end);
     nutest_register(template_if_no_arg);
     nutest_register(template_if_true);
-    nutest_register(template_if_true_nested);
-    nutest_register(template_if_false);
     nutest_register(template_if_nested);
+    nutest_register(template_if_false);
+    nutest_register(template_if_noop);
     nutest_register(template_dot_expr);
     nutest_register(template_path_expr);
     nutest_register(template_path_expr_invalid_syntax);
     nutest_register(template_path_expr_no_object);
     nutest_register(template_path_expr_key_unknown);
+    nutest_register(template_range_simple);
+    nutest_register(template_range_nested);
+    nutest_register(template_range_noop);
     return nutest_run();
 }

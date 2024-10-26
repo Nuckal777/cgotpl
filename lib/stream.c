@@ -72,20 +72,20 @@ int stream_read(stream* stream, unsigned char* out) {
     assert(0);
 }
 
-int stream_seek(stream* stream, size_t relvative) {
+int stream_seek(stream* stream, size_t relative) {
     buffer* buf = NULL;
     size_t next;
     switch (stream->ty) {
         case STREAM_MEMORY:
             buf = &stream->inner.data;
-            next = buf->pos + relvative;
+            next = buf->pos + relative;
             if (next < 0 || next >= buf->len) {
                 return -1;
             }
             buf->pos = next;
             return 0;
         case STREAM_FILE:
-            return fseek(stream->inner.file, relvative, SEEK_CUR);
+            return fseek(stream->inner.file, relative, SEEK_CUR);
     }
     assert(0);
 }

@@ -372,6 +372,12 @@ int template_parse_path_expr(stream* in, state* state, json_value* result, size_
     if (cp_len != 1) {
         return ERR_TEMPLATE_INVALID_SYNTAX;
     }
+    if (cp[0] == '|' || cp[0] == ')' || cp[0] == '}') {
+        err = stream_seek(in, -1);
+        if (err != 0) {
+            return err;
+        }
+    }
     if (strlen(state->ident) == 0) {
         if (depth == 0) {
             *result = *state->dot;
@@ -660,7 +666,7 @@ int template_pipeline_noop(stream* in, state* state, size_t start_depth) {
                 if (err != 0) {
                     return err;
                 }
-                if (strcmp("if", state->ident) == 0) {
+                if (strcmp("if", state->ident) == 0 || strcmp("range", state->ident) == 0) {
                     if (ident_count > 0) {
                         return ERR_TEMPLATE_INVALID_SYNTAX;
                     }
@@ -754,8 +760,8 @@ int template_dispatch_keyword(stream* in, state* state) {
         if (arg.ty != JSON_TY_ARRAY) {
             return ERR_TEMPLATE_NO_LIST;
         }
-        state->depth++;
         if (arg.inner.arr.len == 0) {
+            state->depth++;
             err = template_end_pipeline(in, state, &nothing);
             if (err != 0) {
                 return err;
@@ -777,21 +783,24 @@ int template_dispatch_keyword(stream* in, state* state) {
             if (err != 0) {
                 return err;
             }
+            // post range pipeline
+            state->depth++;
             state->dot = &arg.inner.arr.data[i];
             err = template_plain(in, state);
             if (err != 0) {
                 return err;
             }
-            if (i != arg.inner.arr.len - 1) {
-                long post_pos;
-                err = stream_pos(in, &post_pos);
-                if (err != 0) {
-                    return err;
-                }
-                err = stream_seek(in, pre_pos - post_pos);
-                if (err != 0) {
-                    return err;
-                }
+            if (i == arg.inner.arr.len - 1) {
+                break;
+            }
+            long post_pos;
+            err = stream_pos(in, &post_pos);
+            if (err != 0) {
+                return err;
+            }
+            err = stream_seek(in, pre_pos - post_pos);
+            if (err != 0) {
+                return err;
             }
         }
         state->dot = current;
@@ -935,12 +944,14 @@ int template_plain(stream* in, state* state) {
         }
         err = template_start_pipeline(in, state);
         if (err == ERR_TEMPLATE_KEYWORD_END && state->depth > 0) {
+            state->out_nospace = state->out.len;
             state->depth--;
             return 0;
         }
         if (err != 0) {
             return err;
         }
+        state->out_nospace = state->out.len;
     }
 cleanup:
     if (err == EOF) {
@@ -956,6 +967,7 @@ int template_eval(const char* tpl, size_t n, json_value* dot, char** out) {
     state.dot = dot;
     state.depth = 0;
     state.scratch_val = JSON_NULL;
+    state.out_nospace = 0;
     buf_init(&state.out);
     int err = template_plain(&in, &state);
     buf_append(&state.out, "\0", 1);

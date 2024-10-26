@@ -153,6 +153,26 @@ nutest_result json_parse_array_numbers(void) {
     return NUTEST_PASS;
 }
 
+nutest_result json_parse_array_nested(void) {
+    stream st;
+    const char* in = "[[\"a\", \"b\"]]";
+    stream_open_memory(&st, in, strlen(in));
+    json_value val;
+    int err = json_parse(&st, &val);
+    NUTEST_ASSERT(err == 0);
+    NUTEST_ASSERT(val.ty == JSON_TY_ARRAY);
+    NUTEST_ASSERT(val.inner.arr.data != NULL);
+    NUTEST_ASSERT(val.inner.arr.len == 1);
+    NUTEST_ASSERT(val.inner.arr.cap >= val.inner.arr.len);
+    json_value* nested = val.inner.arr.data;
+    NUTEST_ASSERT(nested[0].ty == JSON_TY_ARRAY);
+    NUTEST_ASSERT(strcmp(nested[0].inner.arr.data[0].inner.str, "a") == 0);
+    NUTEST_ASSERT(strcmp(nested[0].inner.arr.data[1].inner.str, "b") == 0);
+    json_value_free(&val);
+    stream_close(&st);
+    return NUTEST_PASS;
+}
+
 nutest_result json_parse_obj_empty(void) {
     stream st;
     const char* in = "{}";
@@ -235,6 +255,7 @@ int main() {
     nutest_register(json_parse_number_negative_leading_zero);
     nutest_register(json_parse_array_empty);
     nutest_register(json_parse_array_numbers);
+    nutest_register(json_parse_array_nested);
     nutest_register(json_parse_obj_empty);
     nutest_register(json_parse_obj_str_single);
     nutest_register(json_parse_obj_str_multi);
