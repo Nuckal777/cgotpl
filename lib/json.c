@@ -405,6 +405,7 @@ int json_parse_object(stream* st, hashmap* obj) {
             goto cleanup;
         }
         entry prev = hashmap_insert(obj, key, val);
+        key = NULL;
         if (prev.key) {
             free(prev.key);
             json_value_free(prev.value);

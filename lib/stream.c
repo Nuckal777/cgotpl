@@ -22,7 +22,7 @@ int stream_open_file(stream* stream, const char* filename) {
 }
 
 int stream_close(stream* stream) {
-    if (stream->ty == STREAM_MEMORY) {
+    if (stream->ty == 0 || stream->ty == STREAM_MEMORY) {
         return 0;
     }
     if (stream->ty == STREAM_FILE) {

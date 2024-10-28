@@ -357,34 +357,26 @@ int template_parse_ident(stream* in, state* state) {
     return ERR_TEMPLATE_BUFFER_OVERFLOW;
 }
 
-int template_parse_path_expr(stream* in, state* state, json_value* result, size_t depth) {
-    *result = JSON_NULL;
-    int err = template_parse_ident(in, state);
-    if (err != 0) {
-        return err;
-    }
+int template_parse_path_expr_recurse(stream* in, state* state, json_value* result) {
     unsigned char cp[4];
     size_t cp_len;
-    err = stream_next_utf8_cp(in, cp, &cp_len);
+    int err = stream_next_utf8_cp(in, cp, &cp_len);
     if (err != 0) {
         return err;
     }
     if (cp_len != 1) {
         return ERR_TEMPLATE_INVALID_SYNTAX;
     }
-    if (cp[0] == '|' || cp[0] == ')' || cp[0] == '}') {
-        err = stream_seek(in, -1);
-        if (err != 0) {
-            return err;
-        }
+    if (cp[0] != '.') {
+        *result = *state->dot;
+        return stream_seek(in, -1);
+    }
+    err = template_parse_ident(in, state);
+    if (err != 0) {
+        return err;
     }
     if (strlen(state->ident) == 0) {
-        if (depth == 0) {
-            *result = *state->dot;
-            return 0;
-        } else {
-            return ERR_TEMPLATE_INVALID_SYNTAX;
-        }
+        return ERR_TEMPLATE_INVALID_SYNTAX;
     }
     if (state->dot->ty != JSON_TY_OBJECT) {
         return ERR_TEMPLATE_NO_OBJECT;
@@ -394,21 +386,39 @@ int template_parse_path_expr(stream* in, state* state, json_value* result, size_
     if (!found) {
         return ERR_TEMPLATE_KEY_UNKNOWN;
     }
-    if (cp[0] == '.') {
-        json_value* current = state->dot;
-        state->dot = next;
-        err = template_parse_path_expr(in, state, result, depth + 1);
-        state->dot = current;
-        return err;
-    }
-    if (isspace(cp[0])) {
-        *result = *next;
-        return 0;
-    }
-    return ERR_TEMPLATE_INVALID_SYNTAX;
+    json_value* current = state->dot;
+    state->dot = next;
+    err = template_parse_path_expr_recurse(in, state, result);
+    state->dot = current;
+    return err;
 }
 
-int template_parse_literal(stream* in, state* state, json_value* result, unsigned char first) {
+int template_parse_path_expr(stream* in, state* state, json_value* result) {
+    *result = JSON_NULL;
+    int err = template_parse_ident(in, state);
+    if (err != 0) {
+        return err;
+    }
+    if (strlen(state->ident) == 0) {
+        *result = *state->dot;
+        return 0;
+    }
+    if (state->dot->ty != JSON_TY_OBJECT) {
+        return ERR_TEMPLATE_NO_OBJECT;
+    }
+    json_value* next;
+    int found = hashmap_get(&state->dot->inner.obj, state->ident, (const void**)&next);
+    if (!found) {
+        return ERR_TEMPLATE_KEY_UNKNOWN;
+    }
+    json_value* current = state->dot;
+    state->dot = next;
+    err = template_parse_path_expr_recurse(in, state, result);
+    state->dot = current;
+    return err;
+}
+
+int template_parse_value(stream* in, state* state, json_value* result, unsigned char first) {
     unsigned char cp[4];
     size_t cp_len;
     int err = 0;
@@ -509,7 +519,7 @@ int template_parse_literal(stream* in, state* state, json_value* result, unsigne
             *result = state_set_scratch(state, out);
             return 0;
         case '.':
-            return template_parse_path_expr(in, state, result, 0);
+            return template_parse_path_expr(in, state, result);
         default:
             return ERR_TEMPLATE_NO_LITERAL;
     }
@@ -531,7 +541,7 @@ int template_parse_arg(stream* in, state* state, json_value* arg) {
     if (cp_len != 1) {
         return ERR_TEMPLATE_INVALID_SYNTAX;
     }
-    return template_parse_literal(in, state, arg, cp[0]);
+    return template_parse_value(in, state, arg, cp[0]);
 }
 
 int template_end_pipeline(stream* in, state* state, json_value* result) {
@@ -837,7 +847,7 @@ int template_dispatch_pipeline(stream* in, state* state, json_value* result) {
     if (cp_len != 1) {
         return ERR_TEMPLATE_INVALID_SYNTAX;
     }
-    err = template_parse_literal(in, state, result, cp[0]);
+    err = template_parse_value(in, state, result, cp[0]);
     switch (err) {
         case 0:
             return 0;

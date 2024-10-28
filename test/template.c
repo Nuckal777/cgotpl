@@ -201,7 +201,7 @@ nutest_result template_if_noop(void) {
     return NUTEST_PASS;
 }
 
-nutest_result template_dot_expr(void) {
+nutest_result template_dot_expr_root(void) {
     json_value val;
     val.ty = JSON_TY_NUMBER;
     val.inner.num = 77;
@@ -221,6 +221,19 @@ int make_json_val(json_value* val, const char* json) {
     int err = json_parse(&st, val);
     stream_close(&st);
     return err;
+}
+
+nutest_result template_dot_expr_path(void) {
+    json_value val;
+    int err = make_json_val(&val, "{\"c\":\"++\"}");
+    const char* in = "{{.c}}";
+    char* out;
+    err = template_eval(in, strlen(in), &val, &out);
+    NUTEST_ASSERT(err == 0);
+    NUTEST_ASSERT(strcmp("++", out) == 0);
+    free(out);
+    json_value_free(&val);
+    return NUTEST_PASS;
 }
 
 nutest_result template_path_expr(void) {
@@ -335,7 +348,8 @@ int main() {
     nutest_register(template_if_nested);
     nutest_register(template_if_false);
     nutest_register(template_if_noop);
-    nutest_register(template_dot_expr);
+    nutest_register(template_dot_expr_root);
+    nutest_register(template_dot_expr_path);
     nutest_register(template_path_expr);
     nutest_register(template_path_expr_invalid_syntax);
     nutest_register(template_path_expr_no_object);
