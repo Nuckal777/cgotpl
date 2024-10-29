@@ -159,9 +159,12 @@ cleanup:
         json_str_append(0, out, &out_len, out_cap);
     } else {
         free(*out);
+        *out = NULL;
     }
     return err;
 }
+
+#define JSON_NO_LAST_CHAR 0
 
 int json_parse_number(stream* st, char first, double* out, char* last) {
     unsigned char cp[4];
@@ -183,7 +186,7 @@ int json_parse_number(stream* st, char first, double* out, char* last) {
                 errno = 0;
                 return ERR_JSON_INVALID_SYNTAX;
             }
-            *last = cp[0];
+            *last = JSON_NO_LAST_CHAR;
             return 0;
         }
         if (err != 0) {
@@ -293,7 +296,6 @@ int json_match_ascii(stream* st, char* expected, size_t len) {
     return 0;
 }
 
-#define JSON_NO_LAST_CHAR 0
 int json_parse_value(stream* st, json_value* val, char* last_char);
 
 #define JSON_ARRAY_DEFAULT_CAP 8
@@ -335,7 +337,7 @@ int json_parse_array(stream* st, json_array* arr) {
         }
         err = json_skip_whitespace(st, cp, &cp_len);
         if (err != 0) {
-            return err;
+            goto cleanup;
         }
         switch (cp[0]) {
             case ']':
@@ -444,11 +446,11 @@ cleanup:
 int json_parse_value(stream* st, json_value* val, char* last_char) {
     unsigned char cp[4];
     size_t cp_len, out_cap;
-    int err = json_skip_whitespace(st, cp, &cp_len);
     char true_str[3] = {'r', 'u', 'e'};
     char false_str[4] = {'a', 'l', 's', 'e'};
     char null_str[3] = {'u', 'l', 'l'};
     *last_char = JSON_NO_LAST_CHAR;
+    int err = json_skip_whitespace(st, cp, &cp_len);
     if (err != 0) {
         return err;
     }
