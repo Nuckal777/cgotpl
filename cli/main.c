@@ -34,9 +34,7 @@ int main (int argc, char *argv[]) {
     }
     printf("%s", out);
 cleanup:
-    if (out) {
-        free(out);
-    }
+    free(out);
     json_value_free(&dot);
     err = stream_close(&data);
     if (err) {

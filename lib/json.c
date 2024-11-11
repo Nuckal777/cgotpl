@@ -435,9 +435,7 @@ int json_parse_object(stream* st, hashmap* obj) {
     }
 cleanup:
     if (err != 0) {
-        if (key) {
-            free(key);
-        }
+        free(key);
         json_object_free(obj);
     }
     return err;
