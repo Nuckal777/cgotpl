@@ -1,14 +1,13 @@
+add_library(fuzz_cgotpl $<TARGET_PROPERTY:cgotpl,SOURCES>)
+target_compile_options(fuzz_cgotpl PUBLIC -fsanitize=fuzzer,address,undefined)
+target_link_libraries(fuzz_cgotpl PUBLIC -fsanitize=fuzzer,address,undefined)
+target_include_directories(fuzz_cgotpl PUBLIC $<TARGET_PROPERTY:cgotpl,INCLUDE_DIRECTORIES>)
+
 add_executable(fuzz_json json.c)
-target_link_libraries(fuzz_json PUBLIC fuzz_cgotpl)
-target_include_directories(fuzz_json PUBLIC "${PROJECT_SOURCE_DIR}/lib")
-target_compile_options(fuzz_json PRIVATE -fsanitize=fuzzer,address,undefined)
-target_link_libraries(fuzz_json PRIVATE -fsanitize=fuzzer,address,undefined)
+target_link_libraries(fuzz_json PRIVATE fuzz_cgotpl)
 
 add_executable(fuzz_template template.c)
-target_link_libraries(fuzz_template PUBLIC fuzz_cgotpl)
-target_include_directories(fuzz_template PUBLIC "${PROJECT_SOURCE_DIR}/lib")
-target_compile_options(fuzz_template PRIVATE -fsanitize=fuzzer,address,undefined)
-target_link_libraries(fuzz_template PRIVATE -fsanitize=fuzzer,address,undefined)
+target_link_libraries(fuzz_template PRIVATE fuzz_cgotpl)
 
 add_custom_target(
     fuzz
