@@ -2,8 +2,6 @@
 
 #include <string.h>
 
-#include "json.h"
-#include "stream.h"
 #include "test.h"
 
 nutest_result assert_eval_null(const char* tpl, const char* expected) {
@@ -83,6 +81,10 @@ nutest_result template_strip_whitespace_pipeline(void) {
     return assert_eval_null("{{ 7 }} {{- }}", "7");
 }
 
+nutest_result template_strip_pre_no_inner_space(void) {
+    return assert_eval_err(" {{-false}}", ERR_TEMPLATE_INVALID_SYNTAX);
+}
+
 nutest_result template_print_positive_number(void) {
     return assert_eval_null("b {{- 16 }}c", "b16c");
 }
@@ -97,6 +99,26 @@ nutest_result template_print_regular_str(void) {
 
 nutest_result template_print_backtick_str(void) {
     return assert_eval_null("f {{- `bye\"` }}g", "fbye\"g");
+}
+
+nutest_result template_print_list_elems(void) {
+    return assert_eval_data("{{.}}", "[2,4,8]", "[2 4 8]");
+}
+
+nutest_result template_print_list_empty(void) {
+    return assert_eval_data("{{.}}", "[]", "[]");
+}
+
+nutest_result template_print_obj_elem(void) {
+    return assert_eval_data("{{.}}", "{\"a\":null}", "map[a:<nil>]");
+}
+
+nutest_result template_print_obj_elems(void) {
+    return assert_eval_data("{{.}}", "{\"a\":null, \"b\": 45}", "map[b:45 a:<nil>]");
+}
+
+nutest_result template_print_obj_empty(void) {
+    return assert_eval_data("{{.}}", "{}", "map[]");
 }
 
 nutest_result template_func_unknown(void) {
@@ -216,10 +238,16 @@ int main() {
     nutest_register(template_strip_whitespace_post);
     nutest_register(template_strip_whitespace_multi);
     nutest_register(template_strip_whitespace_pipeline);
+    nutest_register(template_strip_pre_no_inner_space);
     nutest_register(template_print_positive_number);
     nutest_register(template_print_negative_number);
     nutest_register(template_print_regular_str);
     nutest_register(template_print_backtick_str);
+    nutest_register(template_print_list_elems);
+    nutest_register(template_print_list_empty);
+    nutest_register(template_print_obj_elem);
+    nutest_register(template_print_obj_elems);
+    nutest_register(template_print_obj_empty);
     nutest_register(template_func_unknown);
     nutest_register(template_func_literal);
     nutest_register(template_end);

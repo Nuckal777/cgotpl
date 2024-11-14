@@ -45,11 +45,22 @@ void buf_free(buf* b) {
     b->data = NULL;
 }
 
+typedef struct {
+    buf* b;
+    size_t count;
+    size_t len;
+} sprintentry_data;
+
+void sprintentry(entry* e, void* userdata);
+
 int sprintval(buf* b, json_value* val) {
     size_t expected;
     char print_buf[128];
     const char* str_true = "true";
     const char* str_false = "false";
+    const char* str_null = "<nil>";
+    json_array* arr;
+    hashmap* obj;
     switch (val->ty) {
         case JSON_TY_NUMBER:
             expected = snprintf(print_buf, sizeof(print_buf), "%g", val->inner.num);
@@ -67,8 +78,41 @@ int sprintval(buf* b, json_value* val) {
         case JSON_TY_FALSE:
             buf_append(b, str_false, strlen(str_false));
             return 0;
+        case JSON_TY_NULL:
+            buf_append(b, str_null, strlen(str_null));
+            return 0;
+        case JSON_TY_ARRAY:
+            arr = &val->inner.arr;
+            buf_append(b, "[", 1);
+            for (size_t i = 0; i < arr->len; i++) {
+                sprintval(b, arr->data + i);
+                if (i != arr->len - 1) {
+                    buf_append(b, " ", 1);
+                }
+            }
+            buf_append(b, "]", 1);
+            return 0;
+        case JSON_TY_OBJECT:
+            obj = &val->inner.obj;
+            buf_append(b, "map[", 4);
+            sprintentry_data data = {.b = b, .count = 0, .len = obj->count};
+            hashmap_iter(obj, &data, sprintentry);
+            buf_append(b, "]", 1);
+            return 0;
     }
     assert(0);
+}
+
+void sprintentry(entry* e, void* userdata) {
+    sprintentry_data* data = (sprintentry_data*)userdata;
+    const char* key = e->key;
+    buf_append(data->b, key, strlen(key));
+    buf_append(data->b, ":", 1);
+    sprintval(data->b, (json_value*)e->value);
+    data->count++;
+    if (data->count != data->len) {
+        buf_append(data->b, " ", 1);
+    }
 }
 
 bool is_empty(json_value* val) {
@@ -154,6 +198,12 @@ int template_parse_number(stream* in, double* out) {
                     return ERR_TEMPLATE_INVALID_SYNTAX;
                 }
                 sign_allowed = false;
+                break;
+            case '.':
+                if (!frac_allowed) {
+                    return ERR_TEMPLATE_INVALID_SYNTAX;
+                }
+                frac_allowed = false;
                 break;
             case '0':
             case '1':

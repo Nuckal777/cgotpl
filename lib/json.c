@@ -199,6 +199,7 @@ int json_parse_number(stream* st, char first, double* out, char* last) {
                 }
                 buf[buf_idx] = cp[0];
                 buf_idx++;
+                break;
             case '1':
             case '2':
             case '3':
