@@ -142,7 +142,7 @@ nutest_result template_if_no_arg(void) {
 }
 
 nutest_result template_if_no_end(void) {
-    return assert_eval_err("{{ if true -}} result", ERR_TEMPLATE_INVALID_SYNTAX);
+    return assert_eval_err("{{ if true -}} result", EOF);
 }
 
 nutest_result template_if_true(void) {

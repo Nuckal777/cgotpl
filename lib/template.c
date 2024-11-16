@@ -739,11 +739,11 @@ int template_pipeline_noop(stream* in, state* state, size_t start_depth) {
                     if (ident_count > 0) {
                         return ERR_TEMPLATE_INVALID_SYNTAX;
                     }
-                    state->depth--;
-                    if (state->depth == start_depth - 1) {
+                    if (state->depth == start_depth) {
                         state->return_reason = RETURN_REASON_END;
                         return 0;
                     }
+                    state->depth--;
                 } else if (strcmp("else", state->ident) == 0) {
                     if (ident_count > 0) {
                         return ERR_TEMPLATE_INVALID_SYNTAX;
@@ -762,9 +762,11 @@ int template_pipeline_noop(stream* in, state* state, size_t start_depth) {
 int template_noop(stream* in, state* state) {
     unsigned char cp[4];
     size_t cp_len;
+    state->depth++;
     size_t start_depth = state->depth;
+    int err = 0;
     while (true) {
-        int err = stream_next_utf8_cp(in, cp, &cp_len);
+        err = stream_next_utf8_cp(in, cp, &cp_len);
         if (err != 0) {
             return err;
         }
@@ -783,6 +785,7 @@ int template_noop(stream* in, state* state) {
             return err;
         }
         if (state->return_reason == RETURN_REASON_END || state->return_reason == RETURN_REASON_ELSE) {
+            state->depth--;
             return 0;
         }
     }
@@ -801,7 +804,6 @@ int template_if(stream* in, state* state) {
     if (err != 0) {
         return err;
     }
-    state->depth++;
     bool cond_empty = is_empty(&cond);
     if (cond_empty) {
         err = template_noop(in, state);
@@ -852,7 +854,6 @@ int template_range(stream* in, state* state) {
         return ERR_TEMPLATE_NO_LIST;
     }
     if (arg.inner.arr.len == 0) {
-        state->depth++;
         err = template_end_pipeline(in, state, &nothing);
         if (err != 0) {
             return err;
@@ -890,7 +891,6 @@ int template_range(stream* in, state* state) {
             return err;
         }
         // post range pipeline
-        state->depth++;
         state->dot = &arg.inner.arr.data[i];
         err = template_plain(in, state);
         if (err != 0) {
@@ -1063,10 +1063,11 @@ int template_plain(stream* in, state* state) {
     unsigned char cp[4];
     size_t cp_len;
     int err = 0;
+    state->depth++;
     while (true) {
         err = stream_next_utf8_cp(in, cp, &cp_len);
         if (err != 0) {
-            goto cleanup;
+            return err;
         }
         if (cp[0] != '{') {
             buf_append(&state->out, (const char*)cp, cp_len);
@@ -1077,7 +1078,7 @@ int template_plain(stream* in, state* state) {
         }
         err = stream_next_utf8_cp(in, cp, &cp_len);
         if (err != 0) {
-            goto cleanup;
+            return err;
         }
         if (cp[0] != '{') {
             char brace_open = '{';
@@ -1090,32 +1091,28 @@ int template_plain(stream* in, state* state) {
         }
         err = template_start_pipeline(in, state);
         if (err != 0) {
-            goto cleanup;
+            return err;
         }
         switch (state->return_reason) {
             case RETURN_REASON_END:
-                if (state->depth == 0) {
-                    err = ERR_TEMPLATE_KEYWORD_END;
+                if (state->depth == 1) {
+                    return ERR_TEMPLATE_KEYWORD_END;
                 } else {
                     state->out_nospace = state->out.len;
-                    state->depth--;
                 }
-                goto cleanup;
+                state->depth--;
+                return 0;
             case RETURN_REASON_ELSE:
-                if (state->depth == 0) {
-                    err = ERR_TEMPLATE_KEYWORD_ELSE;
+                if (state->depth == 1) {
+                    return ERR_TEMPLATE_KEYWORD_ELSE;
                 } else {
                     state->out_nospace = state->out.len;
                 }
-                goto cleanup;
+                state->depth--;
+                return 0;
         }
         state->out_nospace = state->out.len;
     }
-cleanup:
-    if (err == EOF) {
-        err = 0;
-    }
-    return err;
 }
 
 int template_eval(const char* tpl, size_t n, json_value* dot, char** out) {
@@ -1129,12 +1126,12 @@ int template_eval(const char* tpl, size_t n, json_value* dot, char** out) {
     state.return_reason = RETURN_REASON_UNKNOWN;
     buf_init(&state.out);
     int err = template_plain(&in, &state);
+    if (err == EOF && state.depth == 1) {
+        err = 0;
+    }
     buf_append(&state.out, "\0", 1);
     *out = state.out.data;
     json_value_free(&state.scratch_val);
     stream_close(&in);
-    if (state.depth > 0) {
-        return ERR_TEMPLATE_INVALID_SYNTAX;
-    }
     return err;
 }
