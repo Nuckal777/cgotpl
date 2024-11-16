@@ -16,7 +16,7 @@ typedef struct {
 
 typedef int hash_func;
 #define HASH_FUNC_IDENTITY 1
-#define HASH_FUNC_XXH3 2
+#define HASH_FUNC_DJB2 2
 
 typedef int (*hashmap_cmp)(const void*, const void*);
 typedef size_t (*hashmap_key_len)(const void*);

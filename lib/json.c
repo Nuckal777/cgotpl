@@ -372,7 +372,7 @@ int json_parse_object(stream* st, hashmap* obj) {
     size_t cp_len;
     char* key = NULL;
     char last_char;
-    hashmap_new(obj, map_strcmp, map_strlen, HASH_FUNC_XXH3);
+    hashmap_new(obj, map_strcmp, map_strlen, HASH_FUNC_DJB2);
     while (true) {
         err = json_skip_whitespace(st, cp, &cp_len);
         if (err != 0) {

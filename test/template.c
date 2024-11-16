@@ -114,7 +114,7 @@ nutest_result template_print_obj_elem(void) {
 }
 
 nutest_result template_print_obj_elems(void) {
-    return assert_eval_data("{{.}}", "{\"a\":null, \"b\": 45}", "map[b:45 a:<nil>]");
+    return assert_eval_data("{{.}}", "{\"a\":null, \"b\": 45}", "map[a:<nil> b:45]");
 }
 
 nutest_result template_print_obj_empty(void) {

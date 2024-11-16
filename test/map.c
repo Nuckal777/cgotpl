@@ -15,7 +15,7 @@ size_t map_strlen(const void* a) {
 
 nutest_result map_add_one(void) {
     hashmap map;
-    hashmap_new(&map, map_strcmp, map_strlen, HASH_FUNC_XXH3);
+    hashmap_new(&map, map_strcmp, map_strlen, HASH_FUNC_DJB2);
     entry prev = hashmap_insert(&map, "abc", "xyz");
     NUTEST_ASSERT(prev.key == NULL);
     NUTEST_ASSERT(map.count == 1);
@@ -30,7 +30,7 @@ nutest_result map_add_one(void) {
 
 nutest_result map_add_prev(void) {
     hashmap map;
-    hashmap_new(&map, map_strcmp, map_strlen, HASH_FUNC_XXH3);
+    hashmap_new(&map, map_strcmp, map_strlen, HASH_FUNC_DJB2);
     entry prev = hashmap_insert(&map, "def", "456");
     NUTEST_ASSERT(prev.key == NULL);
     NUTEST_ASSERT(map.count == 1);
@@ -51,7 +51,7 @@ nutest_result map_add_prev(void) {
 
 nutest_result map_miss(void) {
     hashmap map;
-    hashmap_new(&map, map_strcmp, map_strlen, HASH_FUNC_XXH3);
+    hashmap_new(&map, map_strcmp, map_strlen, HASH_FUNC_DJB2);
     entry prev = hashmap_insert(&map, "apple", "banana");
     NUTEST_ASSERT(prev.key == NULL);
     NUTEST_ASSERT(map.count == 1);
@@ -65,7 +65,7 @@ nutest_result map_miss(void) {
 
 nutest_result map_add_few(void) {
     hashmap map;
-    hashmap_new(&map, map_strcmp, map_strlen, HASH_FUNC_XXH3);
+    hashmap_new(&map, map_strcmp, map_strlen, HASH_FUNC_DJB2);
     char* keys[6] = {"a", "c", "e", "g", "i", "k"};
     char* vals[6] = {"b", "d", "f", "h", "j", "l"};
     for (size_t i = 0; i < 6; i++) {
