@@ -10,9 +10,9 @@ BUILD_DIR=$1
 declare -i FAILS=0
 
 testcase () {
-    CGOTPL_OUT=$("${BUILD_DIR}/cgotpl" "$1" "$2" 2>/dev/null)
+    CGOTPL_OUT=$("${BUILD_DIR}/cli/cgotpl" "$1" "$2" 2>/dev/null)
     CGOTPL_EXIT=$?
-    GOTEMPLATE_OUT=$("${BUILD_DIR}/gotemplate" "$1" "$2" 2>/dev/null)
+    GOTEMPLATE_OUT=$("${BUILD_DIR}/go/gotemplate" "$1" "$2" 2>/dev/null)
     GOTEMPLATE_EXIT=$?
     if [ $CGOTPL_EXIT -ne 0 ] && [ $GOTEMPLATE_EXIT -ne 0 ]; then
         return
