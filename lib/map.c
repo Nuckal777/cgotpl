@@ -72,7 +72,7 @@ uint64_t djb2(const void* data, size_t len)
     return hash;
 }
 
-size_t hashmap_hash(hashmap* map, const void* key) {
+size_t hashmap_hash(const hashmap* map, const void* key) {
     switch (map->hash) {
         case HASH_FUNC_IDENTITY:
             return (size_t)key;
@@ -134,7 +134,7 @@ entry hashmap_insert(hashmap* map, void* key, void* value) {
 
 // returns 1 if found
 // return 0 if not found
-int hashmap_get(hashmap* map, const void* key, const void** out) {
+int hashmap_get(const hashmap* map, const void* key, const void** out) {
     uint64_t hash = hashmap_hash(map, key);
     bucket* b = &map->data[hash % map->len];
     if (b->data == NULL) {
@@ -157,4 +157,18 @@ void hashmap_iter(hashmap* map, void* userdata, void (*f)(entry*, void*)) {
             f(&b->data[j], userdata);
         }
     }
+}
+
+void** hashmap_keys(const hashmap* map) {
+    void** out = malloc(map->count * sizeof(void*));
+    assert(out);
+    size_t count = 0;
+    for (size_t i = 0; i < map->len; i++) {
+        bucket* b = &map->data[i];
+        for (size_t j = 0; j < b->len; j++) {
+            out[count] = b->data[j].key;
+            count++;
+        }
+    }
+    return out;
 }

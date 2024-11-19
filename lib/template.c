@@ -843,6 +843,86 @@ int template_if(stream* in, state* state) {
     return 0;
 }
 
+typedef struct {
+    int ty;
+    size_t count;
+    size_t len;
+    char** keys;
+    union {
+        const json_array* arr;
+        const hashmap* obj;
+    } inner;
+} value_iter;
+
+int compare_str(const void* a, const void* b) {
+    return strcmp(*((char**)a), *((char**)b));
+}
+
+int value_iter_new(value_iter* iter, json_value* val) {
+    switch (val->ty) {
+        case JSON_TY_ARRAY:
+            iter->ty = JSON_TY_ARRAY;
+            iter->count = 0;
+            iter->len = val->inner.arr.len;
+            iter->inner.arr = &val->inner.arr;
+            iter->keys = NULL;
+            return 0;
+        case JSON_TY_OBJECT:
+            iter->ty = JSON_TY_OBJECT;
+            iter->count = 0;
+            iter->len = val->inner.obj.count;
+            iter->inner.obj = &val->inner.obj;      
+            iter->keys = (char**)hashmap_keys(&val->inner.obj);
+            qsort(iter->keys, iter->len, sizeof(char*), compare_str);
+            return 0;
+    }
+    return ERR_TEMPLATE_NO_ITERABLE;
+}
+
+void value_iter_free(value_iter* iter) {
+    if (iter->ty == JSON_TY_OBJECT) {
+        free(iter->keys);
+    }
+}
+
+typedef struct {
+    size_t idx;
+    json_value key;
+    json_value val;
+} value_iter_out;
+
+bool value_iter_next(value_iter* iter, value_iter_out* out) {
+    const json_array* arr;
+    const hashmap* obj;
+    if (iter->count >= iter->len) {
+        return false;
+    }
+    switch (iter->ty) {
+        case JSON_TY_ARRAY:
+            arr = iter->inner.arr;
+            out->idx = iter->count;
+            out->key.ty = JSON_TY_NUMBER;
+            out->key.inner.num = iter->count;
+            out->val = arr->data[iter->count];
+            iter->count++;
+            return true;
+        case JSON_TY_OBJECT:
+            obj = iter->inner.obj;
+            out->idx = iter->count;
+            out->key.ty = JSON_TY_STRING;
+            char* key = iter->keys[iter->count];
+            out->key.inner.str = key;
+            json_value* val;
+            if (!hashmap_get(obj, key, (const void**)&val)) {
+                assert("key removed from hashmap during iteration");
+            }
+            out->val = *val;
+            iter->count++;
+            return true;
+    }
+    assert(0);
+}
+
 int template_range(stream* in, state* state) {
     json_value nothing = JSON_NULL;
     json_value arg;
@@ -850,10 +930,10 @@ int template_range(stream* in, state* state) {
     if (err != 0) {
         return err;
     }
-    if (arg.ty != JSON_TY_ARRAY) {
-        return ERR_TEMPLATE_NO_LIST;
+    if (arg.ty != JSON_TY_ARRAY && arg.ty != JSON_TY_OBJECT) {
+        return ERR_TEMPLATE_NO_ITERABLE;
     }
-    if (arg.inner.arr.len == 0) {
+    if (is_empty(&arg)) {
         err = template_end_pipeline(in, state, &nothing);
         if (err != 0) {
             return err;
@@ -885,50 +965,59 @@ int template_range(stream* in, state* state) {
     if (err != 0) {
         return err;
     }
-    for (size_t i = 0; i < arg.inner.arr.len; i++) {
+    value_iter iter;
+    err = value_iter_new(&iter, &arg);
+    if (err != 0) {
+        return err;
+    }
+    value_iter_out out;
+    while (value_iter_next(&iter, &out)) {
         err = template_end_pipeline(in, state, &nothing);
         if (err != 0) {
-            return err;
+            goto cleanup;
         }
         // post range pipeline
-        state->dot = &arg.inner.arr.data[i];
+        state->dot = &out.val;
         err = template_plain(in, state);
         if (err != 0) {
-            return err;
+            goto cleanup;
         }
-        if (i == arg.inner.arr.len - 1) {
+        if (out.idx == iter.len - 1) {
             break;
         }
         state->return_reason = RETURN_REASON_UNKNOWN;
         long post_pos;
         err = stream_pos(in, &post_pos);
         if (err != 0) {
-            return err;
+            goto cleanup;
         }
         err = stream_seek(in, pre_pos - post_pos);
         if (err != 0) {
-            return err;
+            goto cleanup;
         }
     }
     state->dot = current;
     bool is_else = state->return_reason == RETURN_REASON_ELSE;
     state->return_reason = RETURN_REASON_UNKNOWN;
     if (!is_else) {
-        return 0;
+        goto cleanup;
     }
     err = template_end_pipeline(in, state, &nothing);
     if (err != 0) {
-        return err;
+        goto cleanup;
     }
     err = template_noop(in, state);
     if (err != 0) {
-        return err;
+        goto cleanup;
     }
     if (state->return_reason != RETURN_REASON_END) {
-        return ERR_TEMPLATE_INVALID_SYNTAX;
+        err = ERR_TEMPLATE_INVALID_SYNTAX;
+        goto cleanup;
     }
     state->return_reason = RETURN_REASON_UNKNOWN;
-    return 0;
+cleanup:
+    value_iter_free(&iter);
+    return err;
 }
 
 int template_dispatch_keyword(stream* in, state* state) {

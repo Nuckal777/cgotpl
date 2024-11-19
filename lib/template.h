@@ -15,7 +15,7 @@
 #define ERR_TEMPLATE_KEYWORD_END -907
 #define ERR_TEMPLATE_KEYWORD_ELSE -908
 #define ERR_TEMPLATE_NO_OBJECT -909
-#define ERR_TEMPLATE_NO_LIST -910
+#define ERR_TEMPLATE_NO_ITERABLE -910
 #define ERR_TEMPLATE_KEY_UNKNOWN -911
 
 int template_eval(const char* tpl, size_t n, json_value* dot, char** out);

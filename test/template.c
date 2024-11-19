@@ -231,6 +231,18 @@ nutest_result template_range_double_else(void) {
     return assert_eval_err_data("{{range .}}1{{else}}2{{else}}3{{end}}", "[false]", ERR_TEMPLATE_INVALID_SYNTAX);
 }
 
+nutest_result template_range_obj(void) {
+    return assert_eval_data("{{ range .obj }}{{ . }}{{end}}", "{\"obj\": {\"a\": false}}", "false");
+}
+
+nutest_result template_range_obj_many_keys(void) {
+    return assert_eval_data("{{ range .obj }}{{ . }}{{end}}", "{\"obj\": {\"a\": 9, \"b\": 8, \"c\": 7, \"def\": 6}}", "9876");
+}
+
+nutest_result template_range_obj_complex(void) {
+    return assert_eval_err_data("{{range .}} {{else}} {{else}.", "{\"a\": 28, \"b\": [true], \"d\": 43.2}", ERR_TEMPLATE_INVALID_SYNTAX);
+}
+
 int main() {
     nutest_register(template_identity);
     nutest_register(template_empty_pipeline);
@@ -275,5 +287,8 @@ int main() {
     nutest_register(template_range_else);
     nutest_register(template_range_empty_else);
     nutest_register(template_range_double_else);
+    nutest_register(template_range_obj);
+    nutest_register(template_range_obj_many_keys);
+    nutest_register(template_range_obj_complex);
     return nutest_run();
 }

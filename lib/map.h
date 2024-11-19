@@ -36,7 +36,8 @@ void hashmap_free(hashmap* map);
 // May return the previous entry stored.
 // If entry.key is NULL there wasn't a previous entry.
 entry hashmap_insert(hashmap* map, void* key, void* value);
-int hashmap_get(hashmap* map, const void* key, const void** out);
+int hashmap_get(const hashmap* map, const void* key, const void** out);
 void hashmap_iter(hashmap* map, void* userdata, void (*f)(entry*, void*));
+void** hashmap_keys(const hashmap* map);
 
 #endif

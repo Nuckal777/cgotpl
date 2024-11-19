@@ -62,6 +62,7 @@ testcase '{{if false}}sh{{else}}ti{{end}}' 'null'
 testcase '{{if true}}sh{{end}}{{end}}' 'null'
 testcase '{{if false}}sh{{end}}{{end}}' 'null'
 testcase '{{ range . -}} {{.}} {{- end }}' '[34, 56]'
+testcase '{{ range . -}} {{.}} {{- end }}' '{"a": "a", "aa": "b", "qwre": "c", "f": "h", "z": 1}'
 
 if [ $FAILS -ne 0 ]; then
     printf "\nencountered %d failures\n" $FAILS

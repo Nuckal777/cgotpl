@@ -138,6 +138,19 @@ nutest_result map_iter(void) {
     return NUTEST_PASS;
 }
 
+nutest_result map_keys(void) {
+    hashmap map;
+    hashmap_new(&map, map_sizetcmp, map_sizetlen, HASH_FUNC_IDENTITY);
+    entry prev = hashmap_insert(&map, (void*)58, (void*)97);
+    NUTEST_ASSERT(prev.key == NULL);
+    void** keys = hashmap_keys(&map);
+    size_t key = (size_t)keys[0];
+    NUTEST_ASSERT(key == 58);
+    free(keys);
+    hashmap_free(&map);
+    return NUTEST_PASS;
+}
+
 int main() {
     nutest_register(map_add_one);
     nutest_register(map_add_prev);
@@ -145,5 +158,6 @@ int main() {
     nutest_register(map_add_few);
     nutest_register(map_add_many);
     nutest_register(map_iter);
+    nutest_register(map_keys);
     return nutest_run();
 }
