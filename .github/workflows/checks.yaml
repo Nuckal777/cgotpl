@@ -1,0 +1,24 @@
+name: Checks
+on: [push]
+env:
+  CC: clang
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-go@v5
+    - name: Init cmake
+      run: cmake -S . -B build
+    - name: Check
+      run: cmake --build build --target check
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Create corpus directories
+      run: mkdir fuzz/json.corpus fuzz/template.corpus
+    - name: Init cmake
+      run: cmake -S . -B build
+    - name: Fuzz
+      run: cmake --build build --target fuzz
