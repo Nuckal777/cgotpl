@@ -2,8 +2,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "json.h"
-#include "stream.h"
 #include "template.h"
 
 int main (int argc, char *argv[]) {

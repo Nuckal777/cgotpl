@@ -22,8 +22,11 @@ typedef struct {
     } inner;
 } stream;
 
+// Opens stream backed by data up to len bytes.
 void stream_open_memory(stream* stream, const void* data, size_t len);
+// Opens stream on the file referenced by filename. Returns 0 on success.
 int stream_open_file(stream* stream, const char* filename);
+// Closes stream. Returns 0 on success.
 int stream_close(stream* stream);
 int stream_pos(stream* stream, long* pos);
 int stream_read(stream* stream, unsigned char* out);

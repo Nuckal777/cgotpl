@@ -38,6 +38,8 @@ struct json_value_st {
         .ty = 0    \
     }
 
+// Consumes an abitrary amount of bytes from st to parse a single JSON value
+// into val. Returns 0 on success.
 int json_parse(stream* st, json_value* val);
 void json_value_free(json_value* val);
 
