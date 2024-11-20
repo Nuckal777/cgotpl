@@ -8,6 +8,8 @@
 "{{range .}}"
 "{{else}}"
 "{{end}}"
+"{{break}}"
+"{{continue}}"
 "{{0}}"
 
 "\\b"

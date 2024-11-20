@@ -83,8 +83,8 @@ Currently, basic control-flow and data access is implemented.
 | `{{if p}} T1 {{else if p}} T0 {{end}}`        | :x:                                                |
 | `{{range pipeline}} T1 {{end}}`               | :white_check_mark:                                 |
 | `{{range pipeline}} T1 {{else}} T0 {{end}}`   | :white_check_mark:                                 |
-| `{{break}}`                                   | :x:                                                |
-| `{{continue}}`                                | :x:                                                |
+| `{{break}}`                                   | :white_check_mark:                                 |
+| `{{continue}}`                                | :white_check_mark:                                 |
 | `{{define}}`                                  | :x:                                                |
 | `{{template "name" pipeline}}`                | :x:                                                |
 | `{{block "name" pipeline}} T1 {{end}}`        | :x:                                                |
@@ -94,6 +94,8 @@ Currently, basic control-flow and data access is implemented.
 | Functions (e.g. `printf`, `not`, `and`, ...)  | :x:                                                |
 
 The c and go standard library may disagree on certain formatting (`printf`) corner-cases.
+cgotpl parses non-executed templates sloppy.
+Syntactical issues in non-executed branches may not lead to an error.
 
 ## Why?
 

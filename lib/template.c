@@ -136,9 +136,11 @@ bool is_empty(json_value* val) {
 
 #define STATE_IDENT_CAP 128
 
-#define RETURN_REASON_UNKNOWN 0
+#define RETURN_REASON_REGULAR 0
 #define RETURN_REASON_END 1
 #define RETURN_REASON_ELSE 2
+#define RETURN_REASON_BREAK 3
+#define RETURN_REASON_CONTINUE 4
 
 typedef struct {
     json_value scratch_val;
@@ -817,7 +819,9 @@ int template_if(stream* in, state* state) {
         }
     }
     bool is_else = state->return_reason == RETURN_REASON_ELSE;
-    state->return_reason = RETURN_REASON_UNKNOWN;
+    if (state->return_reason != RETURN_REASON_BREAK && state->return_reason != RETURN_REASON_CONTINUE) {
+        state->return_reason = RETURN_REASON_REGULAR;
+    }
     if (!is_else) {
         return 0;
     }
@@ -839,7 +843,9 @@ int template_if(stream* in, state* state) {
     if (state->return_reason != RETURN_REASON_END) {
         return ERR_TEMPLATE_INVALID_SYNTAX;
     }
-    state->return_reason = RETURN_REASON_UNKNOWN;
+    if (state->return_reason != RETURN_REASON_BREAK && state->return_reason != RETURN_REASON_CONTINUE) {
+        state->return_reason = RETURN_REASON_REGULAR;
+    }
     return 0;
 }
 
@@ -943,7 +949,7 @@ int template_range(stream* in, state* state) {
             return err;
         }
         bool is_else = state->return_reason == RETURN_REASON_ELSE;
-        state->return_reason = RETURN_REASON_UNKNOWN;
+        state->return_reason = RETURN_REASON_REGULAR;
         if (!is_else) {
             return 0;
         }
@@ -955,7 +961,7 @@ int template_range(stream* in, state* state) {
         if (err != 0) {
             return err;
         }
-        state->return_reason = RETURN_REASON_UNKNOWN;
+        state->return_reason = RETURN_REASON_REGULAR;
         return 0;
     }
 
@@ -982,10 +988,6 @@ int template_range(stream* in, state* state) {
         if (err != 0) {
             goto cleanup;
         }
-        if (out.idx == iter.len - 1) {
-            break;
-        }
-        state->return_reason = RETURN_REASON_UNKNOWN;
         long post_pos;
         err = stream_pos(in, &post_pos);
         if (err != 0) {
@@ -995,10 +997,25 @@ int template_range(stream* in, state* state) {
         if (err != 0) {
             goto cleanup;
         }
+        if (state->return_reason == RETURN_REASON_BREAK) {
+            break;
+        }
+        state->return_reason = RETURN_REASON_REGULAR;
     }
-    state->dot = current;
+    // find the terminating end/else pipeline.
+    // each iteration of the iteration loop could
+    // be terminated early by a break/continue statement.
+    err = template_end_pipeline(in, state, &nothing);
+    if (err != 0) {
+        goto cleanup;
+    }
+    err = template_noop(in, state);
+    if (err != 0) {
+        goto cleanup;
+    }
     bool is_else = state->return_reason == RETURN_REASON_ELSE;
-    state->return_reason = RETURN_REASON_UNKNOWN;
+    state->return_reason = RETURN_REASON_REGULAR;
+    state->dot = current;
     if (!is_else) {
         goto cleanup;
     }
@@ -1014,7 +1031,7 @@ int template_range(stream* in, state* state) {
         err = ERR_TEMPLATE_INVALID_SYNTAX;
         goto cleanup;
     }
-    state->return_reason = RETURN_REASON_UNKNOWN;
+    state->return_reason = RETURN_REASON_REGULAR;
 cleanup:
     value_iter_free(&iter);
     return err;
@@ -1025,7 +1042,6 @@ int template_dispatch_keyword(stream* in, state* state) {
     if (err != 0) {
         return err;
     }
-    json_value nothing = JSON_NULL;
     if (strcmp("if", state->ident) == 0) {
         return template_if(in, state);
     }
@@ -1044,6 +1060,20 @@ int template_dispatch_keyword(stream* in, state* state) {
         // in the noop case template_noop
         // takes care of the matching "else"
         state->return_reason = RETURN_REASON_ELSE;
+        return 0;
+    }
+    if (strcmp("break", state->ident) == 0) {
+        // only used in the non-noop case
+        // the noop case doesn't care about
+        // break pipelines.
+        state->return_reason = RETURN_REASON_BREAK;
+        return 0;
+    }
+    if (strcmp("continue", state->ident) == 0) {
+        // only used in the non-noop case
+        // the noop case doesn't care about
+        // continue pipelines.
+        state->return_reason = RETURN_REASON_CONTINUE;
         return 0;
     }
     return ERR_TEMPLATE_KEYWORD_UNKNOWN;
@@ -1118,7 +1148,7 @@ int template_invoke_pipeline(stream* in, state* state) {
     if (err != 0) {
         return err;
     }
-    if (state->return_reason == RETURN_REASON_END || state->return_reason == RETURN_REASON_ELSE) {
+    if (state->return_reason != RETURN_REASON_REGULAR) {
         return 0;
     }
     return template_end_pipeline(in, state, &result);
@@ -1182,23 +1212,14 @@ int template_plain(stream* in, state* state) {
         if (err != 0) {
             return err;
         }
-        switch (state->return_reason) {
-            case RETURN_REASON_END:
-                if (state->depth == 1) {
-                    return ERR_TEMPLATE_KEYWORD_END;
-                } else {
-                    state->out_nospace = state->out.len;
-                }
-                state->depth--;
-                return 0;
-            case RETURN_REASON_ELSE:
-                if (state->depth == 1) {
-                    return ERR_TEMPLATE_KEYWORD_ELSE;
-                } else {
-                    state->out_nospace = state->out.len;
-                }
-                state->depth--;
-                return 0;
+        if (state->return_reason != RETURN_REASON_REGULAR) {
+            if (state->depth == 1) {
+                return ERR_TEMPLATE_KEYWORD_UNEXPECTED;
+            } else {
+                state->out_nospace = state->out.len;
+            }
+            state->depth--;
+            return 0;
         }
         state->out_nospace = state->out.len;
     }
@@ -1212,7 +1233,7 @@ int template_eval(const char* tpl, size_t n, json_value* dot, char** out) {
     state.depth = 0;
     state.scratch_val = JSON_NULL;
     state.out_nospace = 0;
-    state.return_reason = RETURN_REASON_UNKNOWN;
+    state.return_reason = RETURN_REASON_REGULAR;
     buf_init(&state.out);
     int err = template_plain(&in, &state);
     if (err == EOF && state.depth == 1) {

@@ -12,11 +12,10 @@
 #define ERR_TEMPLATE_FUNC_UNKNOWN -904
 #define ERR_TEMPLATE_LITERAL_DASH -905
 #define ERR_TEMPLATE_NO_LITERAL -906
-#define ERR_TEMPLATE_KEYWORD_END -907
-#define ERR_TEMPLATE_KEYWORD_ELSE -908
-#define ERR_TEMPLATE_NO_OBJECT -909
-#define ERR_TEMPLATE_NO_ITERABLE -910
-#define ERR_TEMPLATE_KEY_UNKNOWN -911
+#define ERR_TEMPLATE_KEYWORD_UNEXPECTED -907
+#define ERR_TEMPLATE_NO_OBJECT -908
+#define ERR_TEMPLATE_NO_ITERABLE -909
+#define ERR_TEMPLATE_KEY_UNKNOWN -910
 
 // tpl is a pointer to a template string from which up to n bytes are read.
 // dot is the inital dot value. out will be filled with the result of templating
