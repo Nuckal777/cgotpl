@@ -183,6 +183,26 @@ nutest_result template_if_else_nested(void) {
         "ggg");
 }
 
+nutest_result template_elseif_if(void) {
+    return assert_eval_null("{{ if true -}} m {{- else if false -}} t {{ else }} g {{ end -}} ", "m");
+}
+
+nutest_result template_elseif_elif(void) {
+    return assert_eval_null("{{ if false -}} m {{- else if true -}} t {{ else }} g {{ end -}} ", "t ");
+}
+
+nutest_result template_elseif_else(void) {
+    return assert_eval_null("{{ if false -}} m {{- else if false -}} t {{ else }} g {{ end -}} ", " g ");
+}
+
+nutest_result template_elseif_multi(void) {
+    return assert_eval_null("{{ if false -}} a {{- else if false -}} b {{- else if true -}} c {{ else }} d {{ end -}} ", "c ");
+}
+
+nutest_result template_elseif_syntax(void) {
+    return assert_eval_err("{{ if false -}} m {{- else blub true -}} t {{ else }} g {{ end -}} ", ERR_TEMPLATE_INVALID_SYNTAX);
+}
+
 nutest_result template_if_double_else(void) {
     return assert_eval_err("{{if true}}a{{else}}b{{else}}c{{end}}", ERR_TEMPLATE_INVALID_SYNTAX);
 }
@@ -291,6 +311,11 @@ int main() {
     nutest_register(template_if_else_true);
     nutest_register(template_if_else_false);
     nutest_register(template_if_else_nested);
+    nutest_register(template_elseif_if);
+    nutest_register(template_elseif_elif);
+    nutest_register(template_elseif_else);
+    nutest_register(template_elseif_multi);
+    nutest_register(template_elseif_syntax);
     nutest_register(template_if_double_else);
     nutest_register(template_dot_expr_root);
     nutest_register(template_dot_expr_path);

@@ -797,39 +797,58 @@ int template_plain(stream* in, state* state);
 
 int template_if(stream* in, state* state) {
     json_value nothing = JSON_NULL;
-    json_value cond;
-    int err = template_parse_arg(in, state, &cond);
-    if (err != 0) {
-        return err;
-    }
-    err = template_end_pipeline(in, state, &nothing);
-    if (err != 0) {
-        return err;
-    }
-    bool cond_empty = is_empty(&cond);
-    if (cond_empty) {
-        err = template_noop(in, state);
+    bool any_branch = false;
+    while (true) {
+        json_value cond;
+        int err = template_parse_arg(in, state, &cond);
         if (err != 0) {
             return err;
         }
-    } else {
-        err = template_plain(in, state);
+        err = template_end_pipeline(in, state, &nothing);
         if (err != 0) {
             return err;
         }
+        bool cond_empty = is_empty(&cond);
+        if (cond_empty || any_branch) {
+            err = template_noop(in, state);
+            if (err != 0) {
+                return err;
+            }
+        } else {
+            any_branch = true;
+            err = template_plain(in, state);
+            if (err != 0) {
+                return err;
+            }
+        }
+        bool is_else = state->return_reason == RETURN_REASON_ELSE;
+        if (state->return_reason != RETURN_REASON_BREAK && state->return_reason != RETURN_REASON_CONTINUE) {
+            state->return_reason = RETURN_REASON_REGULAR;
+        }
+        if (!is_else) {  // end, break, continue
+            return 0;
+        }
+        err = template_skip_whitespace(in);
+        if (err != 0) {
+            return err;
+        }
+        err = template_parse_ident(in, state);
+        if (err != 0) {
+            return err;
+        }
+        size_t ident_len = strlen(state->ident);
+        if (ident_len == 0) {  // clean else pipeline
+            break;
+        }
+        if (strcmp(state->ident, "if") != 0) {  // no else if
+            return ERR_TEMPLATE_INVALID_SYNTAX;
+        }
     }
-    bool is_else = state->return_reason == RETURN_REASON_ELSE;
-    if (state->return_reason != RETURN_REASON_BREAK && state->return_reason != RETURN_REASON_CONTINUE) {
-        state->return_reason = RETURN_REASON_REGULAR;
-    }
-    if (!is_else) {
-        return 0;
-    }
-    err = template_end_pipeline(in, state, &nothing);
+    int err = template_end_pipeline(in, state, &nothing);
     if (err != 0) {
         return err;
     }
-    if (!cond_empty) {
+    if (any_branch) {
         err = template_noop(in, state);
         if (err != 0) {
             return err;
@@ -877,7 +896,7 @@ int value_iter_new(value_iter* iter, json_value* val) {
             iter->ty = JSON_TY_OBJECT;
             iter->count = 0;
             iter->len = val->inner.obj.count;
-            iter->inner.obj = &val->inner.obj;      
+            iter->inner.obj = &val->inner.obj;
             iter->keys = (char**)hashmap_keys(&val->inner.obj);
             qsort(iter->keys, iter->len, sizeof(char*), compare_str);
             return 0;

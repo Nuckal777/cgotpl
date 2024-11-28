@@ -80,7 +80,7 @@ Currently, basic control-flow and data access is implemented.
 | Literals                                      | :construction: (Some escape sequences are missing) |
 | `{{if pipeline}} T1 {{end}}`                  | :white_check_mark:                                 |
 | `{{if pipeline}} T1 {{else}} T0 {{end}}`      | :white_check_mark:                                 |
-| `{{if p}} T1 {{else if p}} T0 {{end}}`        | :x:                                                |
+| `{{if p}} T1 {{else if p}} T0 {{end}}`        | :white_check_mark:                                 |
 | `{{range pipeline}} T1 {{end}}`               | :white_check_mark:                                 |
 | `{{range pipeline}} T1 {{else}} T0 {{end}}`   | :white_check_mark:                                 |
 | `{{break}}`                                   | :white_check_mark:                                 |
