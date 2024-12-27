@@ -279,6 +279,26 @@ nutest_result template_range_continue(void) {
     return assert_eval_data("{{range .}}z{{if .}}{{continue}}{{end}}a{{end}}", "[false, false, true, false]", "zazazza");
 }
 
+nutest_result template_with_obj(void) {
+    return assert_eval_data("{{ with .a }} {{.}} {{end}}", "{\"a\": 1227}", " 1227 ");
+}
+
+nutest_result template_with_obj_else(void) {
+    return assert_eval_data("{{ with .a }} {{.}} {{ else }}fgh{{ end }}", "{\"a\": []}", "fgh");
+}
+
+nutest_result template_with_obj_else_with(void) {
+    return assert_eval_data("{{ with .a }} {{.}} {{else with .b}}{{.}}{{ else }}fgh{{ end }}", "{\"a\": [], \"b\": 2724}", "2724");
+}
+
+nutest_result template_with_no_arg(void) {
+    return assert_eval_err("{{ with }} a {{end}}", ERR_TEMPLATE_NO_LITERAL);
+}
+
+nutest_result template_with_double_else(void) {
+    return assert_eval_err("{{ with . }} a {{ else }} b {{ else }} c {{ end }}", ERR_TEMPLATE_INVALID_SYNTAX);
+}
+
 int main() {
     nutest_register(template_identity);
     nutest_register(template_empty_pipeline);
@@ -335,5 +355,10 @@ int main() {
     nutest_register(template_range_obj_complex);
     nutest_register(template_range_break);
     nutest_register(template_range_continue);
+    nutest_register(template_with_obj);
+    nutest_register(template_with_obj_else);
+    nutest_register(template_with_obj_else_with);
+    nutest_register(template_with_no_arg);
+    nutest_register(template_with_double_else);
     return nutest_run();
 }

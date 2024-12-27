@@ -68,6 +68,9 @@ testcase '{{ range . -}} {{.}} {{- end }}' '[34, 56]'
 testcase '{{ range . -}} {{.}} {{- end }}' '{"a": "a", "aa": "b", "qwre": "c", "f": "h", "z": 1}'
 testcase '{{range .}} as {{- break -}} df {{end}}' '[0, 0, 0]'
 testcase '{{range .}} as {{- continue -}} df {{end}}' '[0, 0, 0]'
+testcase '{{with .x -}} hj{{.}}kl {{- else -}} nub {{- end}}' '{"x": "abcd"}'
+testcase '{{with .x -}} hj{{.}}kl {{- else -}} nub {{- end}}' '{"y": "yyy"}'
+testcase '{{with .x -}} hj{{.}}kl {{- else with .y -}} a{{.}}z {{- else -}} nub {{- end}}' '{"y": "yyy"}'
 
 if [ $FAILS -ne 0 ]; then
     printf "\nencountered %d failures\n" $FAILS

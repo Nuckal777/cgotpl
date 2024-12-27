@@ -88,7 +88,7 @@ Currently, basic control-flow and data access is implemented.
 | `{{define}}`                                  | :x:                                                |
 | `{{template "name" pipeline}}`                | :x:                                                |
 | `{{block "name" pipeline}} T1 {{end}}`        | :x:                                                |
-| `{{with pipeline}} T1 {{end}}`                | :x:                                                |
+| `{{with pipeline}} T1 {{end}}`                | :white_check_mark:                                 |
 | Field access `.a.b.c`                         | :white_check_mark:                                 |
 | Variables                                     | :x:                                                |
 | Functions (e.g. `printf`, `not`, `and`, ...)  | :x:                                                |

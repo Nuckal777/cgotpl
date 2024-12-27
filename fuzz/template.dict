@@ -12,6 +12,7 @@
 "{{continue}}"
 "{{0}}"
 "else if"
+"with"
 
 "\\b"
 "\\f"

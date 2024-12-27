@@ -732,7 +732,7 @@ int template_pipeline_noop(stream* in, state* state, size_t start_depth) {
                 if (err != 0) {
                     return err;
                 }
-                if (strcmp("if", state->ident) == 0 || strcmp("range", state->ident) == 0) {
+                if (strcmp("if", state->ident) == 0 || strcmp("range", state->ident) == 0 || strcmp("with", state->ident) == 0) {
                     if (ident_count > 0) {
                         return ERR_TEMPLATE_INVALID_SYNTAX;
                     }
@@ -850,14 +850,11 @@ int template_if(stream* in, state* state) {
     }
     if (any_branch) {
         err = template_noop(in, state);
-        if (err != 0) {
-            return err;
-        }
     } else {
         err = template_plain(in, state);
-        if (err != 0) {
-            return err;
-        }
+    }
+    if (err != 0) {
+        return err;
     }
     if (state->return_reason != RETURN_REASON_END) {
         return ERR_TEMPLATE_INVALID_SYNTAX;
@@ -1056,6 +1053,83 @@ cleanup:
     return err;
 }
 
+int template_with(stream* in, state* state) {
+    json_value nothing = JSON_NULL;
+    bool any_branch = false;
+    while (true) {
+        json_value arg;
+        int err = template_parse_arg(in, state, &arg);
+        if (err == ERR_TEMPLATE_KEY_UNKNOWN) {
+            arg = JSON_NULL;
+            err = 0;
+        }
+        if (err != 0) {
+            return err;
+        }
+        err = template_end_pipeline(in, state, &nothing);
+        if (err != 0) {
+            return err;
+        }
+        bool arg_empty = is_empty(&arg);
+        if (arg_empty) {
+            err = template_noop(in, state);
+            if (err != 0) {
+                return err;
+            }
+        } else {
+            any_branch = true;
+            json_value* previous = state->dot;
+            state->dot = &arg;
+            err = template_plain(in, state);
+            if (err != 0) {
+                return err;
+            }
+            state->dot = previous;
+        }
+        bool is_else = state->return_reason == RETURN_REASON_ELSE;
+        if (state->return_reason != RETURN_REASON_BREAK && state->return_reason != RETURN_REASON_CONTINUE) {
+            state->return_reason = RETURN_REASON_REGULAR;
+        }
+        if (!is_else) {  // end, break, continue
+            return 0;
+        }
+        err = template_skip_whitespace(in);
+        if (err != 0) {
+            return err;
+        }
+        err = template_parse_ident(in, state);
+        if (err != 0) {
+            return err;
+        }
+        size_t ident_len = strlen(state->ident);
+        if (ident_len == 0) {  // clean else pipeline
+            break;
+        }
+        if (strcmp(state->ident, "with") != 0) {  // no else with
+            return ERR_TEMPLATE_INVALID_SYNTAX;
+        }
+    }
+    int err = template_end_pipeline(in, state, &nothing);
+    if (err != 0) {
+        return err;
+    }
+    if (any_branch) {
+        err = template_noop(in, state);
+    } else {
+        err = template_plain(in, state);
+    }
+    if (err != 0) {
+        return err;
+    }
+    if (state->return_reason != RETURN_REASON_END) {
+        return ERR_TEMPLATE_INVALID_SYNTAX;
+    }
+    if (state->return_reason != RETURN_REASON_BREAK && state->return_reason != RETURN_REASON_CONTINUE) {
+        state->return_reason = RETURN_REASON_REGULAR;
+    }
+    return 0;
+}
+
 int template_dispatch_keyword(stream* in, state* state) {
     int err = template_parse_ident(in, state);
     if (err != 0) {
@@ -1066,6 +1140,9 @@ int template_dispatch_keyword(stream* in, state* state) {
     }
     if (strcmp("range", state->ident) == 0) {
         return template_range(in, state);
+    }
+    if (strcmp("with", state->ident) == 0) {
+        return template_with(in, state);
     }
     if (strcmp("end", state->ident) == 0) {
         // only used in the non-noop case
