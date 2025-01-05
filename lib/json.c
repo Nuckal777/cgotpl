@@ -53,6 +53,46 @@ void json_value_free(json_value* val) {
     }
 }
 
+void json_value_copy_iter(entry* entry, void* userdata) {
+    hashmap* dest = (hashmap*)userdata;
+    char* key = strdup(entry->key);
+    json_value* value = malloc(sizeof(json_value));
+    assert(value);
+    json_value_copy(value, entry->value);
+    hashmap_insert(dest, key, value);
+}
+
+void json_value_copy(json_value* dest, const json_value* src) {
+    dest->ty = src->ty;
+    switch (src->ty) {
+        case JSON_TY_NULL:
+        case JSON_TY_TRUE:
+        case JSON_TY_FALSE:
+            return;
+        case JSON_TY_NUMBER:
+            dest->inner.num = src->inner.num;
+            return;
+        case JSON_TY_STRING:
+            dest->inner.str = strdup(src->inner.str);
+            return;
+        case JSON_TY_ARRAY:
+            dest->inner.arr = src->inner.arr;
+            dest->inner.arr.data = malloc(sizeof(json_value) * dest->inner.arr.cap);
+            assert(dest->inner.arr.data);
+            const json_array* srcarr = &src->inner.arr;
+            json_array* destarr = &dest->inner.arr;
+            for (size_t i = 0; i < srcarr->len; i++) {
+                json_value_copy(&destarr->data[i], &srcarr->data[i]);
+            }
+            return;
+        case JSON_TY_OBJECT:
+            hashmap_new(&dest->inner.obj, hashmap_strcmp, hashmap_strlen, HASH_FUNC_DJB2);
+            hashmap_iter(&src->inner.obj, &dest->inner.obj, json_value_copy_iter);
+            return;
+    }
+    assert(0);
+}
+
 void json_str_append(char val, char** buf, size_t* len, size_t* cap) {
     if (*len == *cap) {
         *cap = *cap * 3 / 2;
@@ -64,7 +104,7 @@ void json_str_append(char val, char** buf, size_t* len, size_t* cap) {
     return;
 }
 
-// the leading quoatation mark was just read
+// the leading quotation mark was just read
 // will consume the trailing quotation mark
 int json_parse_str(stream* st, char** out, size_t* out_cap) {
     size_t out_len = 0;
@@ -357,14 +397,6 @@ cleanup:
     return err;
 }
 
-int map_strcmp(const void* a, const void* b) {
-    return strcmp(a, b);
-}
-
-size_t map_strlen(const void* a) {
-    return strlen(a);
-}
-
 int json_parse_object(stream* st, hashmap* obj) {
     bool first = true;
     int err = 0;
@@ -372,7 +404,7 @@ int json_parse_object(stream* st, hashmap* obj) {
     size_t cp_len;
     char* key = NULL;
     char last_char;
-    hashmap_new(obj, map_strcmp, map_strlen, HASH_FUNC_DJB2);
+    hashmap_new(obj, hashmap_strcmp, hashmap_strlen, HASH_FUNC_DJB2);
     while (true) {
         err = json_skip_whitespace(st, cp, &cp_len);
         if (err != 0) {

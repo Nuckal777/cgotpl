@@ -299,6 +299,34 @@ nutest_result template_with_double_else(void) {
     return assert_eval_err("{{ with . }} a {{ else }} b {{ else }} c {{ end }}", ERR_TEMPLATE_INVALID_SYNTAX);
 }
 
+nutest_result template_var_dollar(void) {
+    return assert_eval_data("{{ $ }}", "529", "529");
+}
+
+nutest_result template_var_unknown(void) {
+    return assert_eval_err("{{ $unknown }}", ERR_TEMPLATE_VAR_UNKNOWN);
+}
+
+nutest_result template_var_define(void) {
+    return assert_eval_null("{{ $a := \"321\" }}{{ $a }}", "321");
+}
+
+nutest_result template_var_assign_undefined(void) {
+    return assert_eval_err("{{$undefined=`pppp`}}", ERR_TEMPLATE_VAR_UNKNOWN);
+}
+
+nutest_result template_var_redefine(void) {
+    return assert_eval_null("{{$x := 7}}{{$x := 8}}{{$x}}", "8");
+}
+
+nutest_result template_var_scope_kept(void) {
+    return assert_eval_null("{{$z := true}}{{with 137}}text {{end}}{{$z}}", "text true");
+}
+
+nutest_result template_var_scope_lost(void) {
+    return assert_eval_err("{{ with $ }}{{$y := 3}}{{end}}{{$y}}", ERR_TEMPLATE_VAR_UNKNOWN);
+}
+
 int main() {
     nutest_register(template_identity);
     nutest_register(template_empty_pipeline);
@@ -360,5 +388,12 @@ int main() {
     nutest_register(template_with_obj_else_with);
     nutest_register(template_with_no_arg);
     nutest_register(template_with_double_else);
+    nutest_register(template_var_dollar);
+    nutest_register(template_var_unknown);
+    nutest_register(template_var_define);
+    nutest_register(template_var_assign_undefined);
+    nutest_register(template_var_redefine);
+    nutest_register(template_var_scope_kept);
+    nutest_register(template_var_scope_lost);
     return nutest_run();
 }

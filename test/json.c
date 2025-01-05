@@ -241,6 +241,49 @@ nutest_result json_parse_obj_double(void) {
     return NUTEST_PASS;
 }
 
+nutest_result assert_json_value_copy(const char* str) {
+    stream st;
+    stream_open_memory(&st, str, strlen(str));
+    json_value val;
+    int err = json_parse(&st, &val);
+    NUTEST_ASSERT(err == 0);
+    json_value copy;
+    json_value_copy(&copy, &val);
+    NUTEST_ASSERT(val.ty == copy.ty);
+    json_value_free(&copy);
+    json_value_free(&val);
+    stream_close(&st);
+    return NUTEST_PASS;
+}
+
+nutest_result json_value_copy_null(void) {
+    return assert_json_value_copy("null");
+}
+
+nutest_result json_value_copy_true(void) {
+    return assert_json_value_copy("true");
+}
+
+nutest_result json_value_copy_false(void) {
+    return assert_json_value_copy("false");
+}
+
+nutest_result json_value_copy_number(void) {
+    return assert_json_value_copy("42");
+}
+
+nutest_result json_value_copy_string(void) {
+    return assert_json_value_copy("\"abcdef\"");
+}
+
+nutest_result json_value_copy_array(void) {
+    return assert_json_value_copy("[45, \"abc\"]");
+}
+
+nutest_result json_value_copy_object(void) {
+    return assert_json_value_copy("{\"abc\": true}");
+}
+
 int main() {
     nutest_register(json_parse_str_ascii);
     nutest_register(json_parse_str_long);
@@ -260,5 +303,12 @@ int main() {
     nutest_register(json_parse_obj_str_single);
     nutest_register(json_parse_obj_str_multi);
     nutest_register(json_parse_obj_double);
+    nutest_register(json_value_copy_null);
+    nutest_register(json_value_copy_true);
+    nutest_register(json_value_copy_false);
+    nutest_register(json_value_copy_number);
+    nutest_register(json_value_copy_string);
+    nutest_register(json_value_copy_array);
+    nutest_register(json_value_copy_object);
     return nutest_run();
 }

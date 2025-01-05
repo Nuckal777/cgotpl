@@ -39,7 +39,6 @@ void bucket_insert(bucket* b, entry e, size_t at) {
 }
 
 #define HASHMAP_DEFAULT_LEN 16
-#define HASHMAP_SEED 1337
 
 void hashmap_new(hashmap* map, hashmap_cmp cmp, hashmap_key_len key_len, hash_func hash) {
     map->len = HASHMAP_DEFAULT_LEN;
@@ -62,8 +61,7 @@ void hashmap_free(hashmap* map) {
     return;
 }
 
-uint64_t djb2(const void* data, size_t len)
-{
+uint64_t djb2(const void* data, size_t len) {
     const uint8_t* p = (const uint8_t*)data;
     uint64_t hash = 5381;
     for (size_t i = 0; i < len; i++) {
@@ -150,7 +148,7 @@ int hashmap_get(const hashmap* map, const void* key, const void** out) {
     return 0;
 }
 
-void hashmap_iter(hashmap* map, void* userdata, void (*f)(entry*, void*)) {
+void hashmap_iter(const hashmap* map, void* userdata, void (*f)(entry*, void*)) {
     for (size_t i = 0; i < map->len; i++) {
         bucket* b = &map->data[i];
         for (size_t j = 0; j < b->len; j++) {
@@ -171,4 +169,12 @@ void** hashmap_keys(const hashmap* map) {
         }
     }
     return out;
+}
+
+int hashmap_strcmp(const void* a, const void* b) {
+    return strcmp(a, b);
+}
+
+size_t hashmap_strlen(const void* a) {
+    return strlen(a);
 }

@@ -71,6 +71,18 @@ testcase '{{range .}} as {{- continue -}} df {{end}}' '[0, 0, 0]'
 testcase '{{with .x -}} hj{{.}}kl {{- else -}} nub {{- end}}' '{"x": "abcd"}'
 testcase '{{with .x -}} hj{{.}}kl {{- else -}} nub {{- end}}' '{"y": "yyy"}'
 testcase '{{with .x -}} hj{{.}}kl {{- else with .y -}} a{{.}}z {{- else -}} nub {{- end}}' '{"y": "yyy"}'
+testcase '{{$}}' '["a", 1]'
+testcase '{{$huh}}' '[]'
+testcase '{{$test:=`something`}}{{$test}}' 'null'
+testcase '{{$err="something"}}' 'null'
+testcase '{{ $z := "cba"}}{{ $z = true }}{{ $z }}'
+testcase '{{ $abc := 3 }}{{ $abc:=4}}{{$abc}}' 'null'
+testcase '{{$a := true}}{{with .}}text{{end}}{{$a}}' 'null'
+testcase '{{$a := true}}{{with .}}{{$a := false}}{{$a}}{{end}}{{$a}}' 'null'
+testcase '{{ if $a := 2345 }}{{$a}}{{end}}' 'null'
+testcase '{{ if $a := 2345 }}{{$a}}{{end}}{{$a}}' 'null'
+testcase '{{ with $a := 4567 }}{{$a}}{{end}}' 'null'
+testcase '{{ range $a := 6789 }}{{$a}}{{end}}' 'null'
 
 if [ $FAILS -ne 0 ]; then
     printf "\nencountered %d failures\n" $FAILS

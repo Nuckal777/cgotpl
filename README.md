@@ -90,7 +90,8 @@ Currently, basic control-flow and data access is implemented.
 | `{{block "name" pipeline}} T1 {{end}}`        | :x:                                                |
 | `{{with pipeline}} T1 {{end}}`                | :white_check_mark:                                 |
 | Field access `.a.b.c`                         | :white_check_mark:                                 |
-| Variables                                     | :x:                                                |
+| Variables                                     | :construction: (Functions can't be assigned)       |
+| `range` with variables                        | :x:                                                |
 | Functions (e.g. `printf`, `not`, `and`, ...)  | :x:                                                |
 
 The c and go standard library may disagree on certain formatting (`printf`) corner-cases.
