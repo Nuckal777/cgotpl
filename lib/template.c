@@ -190,7 +190,7 @@ void stack_set_var(stack* s, char* var, json_value* value) {
 const json_value* stack_find_var(stack* s, const char* var) {
     for (ptrdiff_t i = s->len - 1; i >= 0; i--) {
         const json_value* out;
-        if(hashmap_get(&s->frames[i], var, (const void**)&out)) {
+        if (hashmap_get(&s->frames[i], var, (const void**)&out)) {
             return out;
         }
     }
@@ -572,6 +572,7 @@ int template_parse_value(stream* in, state* state, json_value* result, unsigned 
     size_t seek_back = -1;
     size_t identifier_len = 0;
     json_value out = JSON_NULL;
+    long pre_pos;
     switch (first) {
         case 't':
             err = template_parse_ident(in, state);
@@ -585,7 +586,11 @@ int template_parse_value(stream* in, state* state, json_value* result, unsigned 
                 return 0;
             }
             identifier_len = strlen(state->ident);
-            return stream_seek(in, -identifier_len - 1);
+            err = stream_seek(in, -identifier_len - 1);
+            if (err != 0) {
+                return err;
+            }
+            return ERR_TEMPLATE_NO_LITERAL;
         case 'f':
             err = template_parse_ident(in, state);
             if (err != 0) {
@@ -598,7 +603,11 @@ int template_parse_value(stream* in, state* state, json_value* result, unsigned 
                 return 0;
             }
             identifier_len = strlen(state->ident);
-            return stream_seek(in, -identifier_len - 1);
+            err = stream_seek(in, -identifier_len - 1);
+            if (err != 0) {
+                return err;
+            }
+            return ERR_TEMPLATE_NO_LITERAL;
         case 'n':
             err = template_parse_ident(in, state);
             if (err != 0) {
@@ -610,8 +619,11 @@ int template_parse_value(stream* in, state* state, json_value* result, unsigned 
                 *result = state_set_scratch(state, out);
                 return 0;
             }
-            identifier_len = strlen(state->ident);
-            return stream_seek(in, -identifier_len - 1);
+            err = stream_seek(in, -identifier_len - 1);
+            if (err != 0) {
+                return err;
+            }
+            return ERR_TEMPLATE_NO_LITERAL;
         case '$':
             return template_parse_var_value(in, state, result);
         case '"':
@@ -674,6 +686,116 @@ int template_parse_value(stream* in, state* state, json_value* result, unsigned 
     return 0;
 }
 
+int template_parse_var_mutation(stream* in, state* state, json_value* result) {
+    unsigned char cp[4];
+    size_t cp_len;
+    *result = JSON_NULL;
+    // parse var name
+    int err = stream_next_utf8_cp(in, cp, &cp_len);
+    if (err != 0) {
+        return err;
+    }
+    if (cp_len > 1 || !isspace(cp[0])) {
+        err = stream_seek(in, -cp_len);
+        if (err != 0) {
+            return err;
+        }
+        err = template_parse_ident(in, state);
+        if (err != 0) {
+            return err;
+        }
+    } else {
+        state->ident[0] = 0;
+    }
+    err = template_skip_whitespace(in);
+    if (err != 0) {
+        return err;
+    }
+    // check for definition/assignment
+    err = stream_next_utf8_cp(in, cp, &cp_len);
+    if (err != 0) {
+        return err;
+    }
+    if (cp_len > 1) {
+        return ERR_TEMPLATE_NO_MUTATION;
+    }
+    bool is_assignment = true;
+    switch (cp[0]) {
+        case '=':
+            break;
+        case ':':
+            err = stream_next_utf8_cp(in, cp, &cp_len);
+            if (err != 0) {
+                return err;
+            }
+            if (cp_len > 1 || cp[0] != '=') {
+                return ERR_TEMPLATE_NO_MUTATION;
+            }
+            is_assignment = false;
+            break;
+        default:
+            return ERR_TEMPLATE_NO_MUTATION;
+    }
+    const json_value* current_val = stack_find_var(&state->stack, state->ident);
+    if (current_val == NULL && is_assignment) {
+        return ERR_TEMPLATE_VAR_UNKNOWN;
+    }
+    err = template_skip_whitespace(in);
+    if (err != 0) {
+        return err;
+    }
+    // parse the value
+    err = stream_next_utf8_cp(in, cp, &cp_len);
+    if (err != 0) {
+        return err;
+    }
+    if (cp_len > 1) {
+        return ERR_TEMPLATE_INVALID_SYNTAX;
+    }
+    json_value out;
+    char* ident_copy = strdup(state->ident);
+    err = template_parse_value(in, state, &out, cp[0]);  // returns a pointer to state->scratch_val
+    if (err != 0) {
+        free(ident_copy);
+        return err;
+    }
+    // nil cannot be assigned in go
+    if (out.ty == JSON_TY_NULL) {
+        free(ident_copy);
+        return ERR_TEMPLATE_KEYWORD_UNEXPECTED;
+    }
+    json_value* value_copy = malloc(sizeof(json_value));
+    assert(value_copy);
+    json_value_copy(value_copy, &out);
+    stack_set_var(&state->stack, ident_copy, value_copy);
+    *result = state->scratch_val;
+    return 0;
+}
+
+int template_parse_value_with_var_mut(stream* in, state* state, json_value* result, unsigned char first) {
+    if (first == '$') {
+        long pre_pos;
+        int err = stream_pos(in, &pre_pos);
+        if (err != 0) {
+            return err;
+        }
+        err = template_parse_var_mutation(in, state, result);
+        if (err != ERR_TEMPLATE_NO_MUTATION) {
+            return err;
+        }
+        long post_pos;
+        err = stream_pos(in, &post_pos);
+        if (err != 0) {
+            return err;
+        }
+        err = stream_seek(in, pre_pos - post_pos);
+        if (err != 0) {
+            return err;
+        }
+    }
+    return template_parse_value(in, state, result, first);
+}
+
 int template_parse_arg(stream* in, state* state, json_value* arg) {
     *arg = JSON_NULL;
     unsigned char cp[4];
@@ -689,7 +811,7 @@ int template_parse_arg(stream* in, state* state, json_value* arg) {
     if (cp_len != 1) {
         return ERR_TEMPLATE_INVALID_SYNTAX;
     }
-    return template_parse_value(in, state, arg, cp[0]);
+    return template_parse_value_with_var_mut(in, state, arg, cp[0]);
 }
 
 int template_end_pipeline(stream* in, state* state, json_value* result) {
@@ -1275,85 +1397,6 @@ int template_dispatch_func(stream* in, state* state, json_value* result) {
     return ERR_TEMPLATE_FUNC_UNKNOWN;
 }
 
-int template_parse_var_mutation(stream* in, state* state) {
-    unsigned char cp[4];
-    size_t cp_len;
-    // parse var name
-    int err = stream_next_utf8_cp(in, cp, &cp_len);
-    if (err != 0) {
-        return err;
-    }
-    if (cp_len > 1 || !isspace(cp[0])) {
-        err = stream_seek(in, -cp_len);
-        if (err != 0) {
-            return err;
-        }
-        err = template_parse_ident(in, state);
-        if (err != 0) {
-            return err;
-        }
-    } else {
-        state->ident[0] = 0;
-    }
-    err = template_skip_whitespace(in);
-    if (err != 0) {
-        return err;
-    }
-    // check for definition/assignment
-    err = stream_next_utf8_cp(in, cp, &cp_len);
-    if (err != 0) {
-        return err;
-    }
-    if (cp_len > 1) {
-        return ERR_TEMPLATE_NO_MUTATION;
-    }
-    bool is_assignment = true;
-    switch (cp[0]) {
-        case '=':
-            break;
-        case ':':
-            err = stream_next_utf8_cp(in, cp, &cp_len);
-            if (err != 0) {
-                return err;
-            }
-            if (cp_len > 1 || cp[0] != '=') {
-                return ERR_TEMPLATE_NO_MUTATION;
-            }
-            is_assignment = false;
-            break;
-        default:
-            return ERR_TEMPLATE_NO_MUTATION;
-    }
-    const json_value* current_val = stack_find_var(&state->stack, state->ident);
-    if (current_val == NULL && is_assignment) {
-        return ERR_TEMPLATE_VAR_UNKNOWN;
-    }
-    err = template_skip_whitespace(in);
-    if (err != 0) {
-        return err;
-    }
-    // parse the value
-    err = stream_next_utf8_cp(in, cp, &cp_len);
-    if (err != 0) {
-        return err;
-    }
-    if (cp_len > 1) {
-        return ERR_TEMPLATE_INVALID_SYNTAX;
-    }
-    json_value result;
-    char* ident_copy = strdup(state->ident);
-    err = template_parse_value(in, state, &result, cp[0]);  // returns a pointer to state->scratch_val
-    if (err != 0) {
-        free(ident_copy);
-        return err;
-    }
-    json_value* value_copy = malloc(sizeof(json_value));
-    assert(value_copy);
-    json_value_copy(value_copy, &result);
-    stack_set_var(&state->stack, ident_copy, value_copy);
-    return 0;
-}
-
 int template_dispatch_pipeline(stream* in, state* state, json_value* result) {
     unsigned char cp[4];
     size_t cp_len;
@@ -1374,8 +1417,10 @@ int template_dispatch_pipeline(stream* in, state* state, json_value* result) {
         if (err != 0) {
             return err;
         }
-        err = template_parse_var_mutation(in, state);
+        err = template_parse_var_mutation(in, state, result);
         if (err != ERR_TEMPLATE_NO_MUTATION) {
+            // top level var assignments/definitions have their result discarded
+            *result = JSON_NULL;
             return err;
         }
         long post_pos;
@@ -1449,7 +1494,10 @@ int template_start_pipeline(stream* in, state* state) {
         return err;
     }
     if (cp[0] != '-') {
-        stream_seek(in, -cp_len);
+        err = stream_seek(in, -cp_len);
+        if (err != 0) {
+            return err;
+        }
         return template_invoke_pipeline(in, state);
     }
     size_t off = cp_len;
@@ -1458,7 +1506,10 @@ int template_start_pipeline(stream* in, state* state) {
         return err;
     }
     if (cp[0] != ' ') {
-        stream_seek(in, -cp_len - off);
+        err = stream_seek(in, -cp_len - off);
+        if (err != 0) {
+            return err;
+        }
         return template_invoke_pipeline(in, state);
     }
     state->out.len = state->out_nospace;
@@ -1543,6 +1594,10 @@ int template_eval(const char* tpl, size_t n, json_value* dot, char** out) {
     *out = state.out.data;
     stack_free(&state.stack);
     json_value_free(&state.scratch_val);
-    stream_close(&in);
+    int close_err = stream_close(&in);
+    if (close_err != 0) {
+        free(*out);
+        return close_err;
+    }
     return err;
 }

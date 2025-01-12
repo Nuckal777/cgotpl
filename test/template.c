@@ -311,6 +311,22 @@ nutest_result template_var_define(void) {
     return assert_eval_null("{{ $a := \"321\" }}{{ $a }}", "321");
 }
 
+nutest_result template_var_define_nested(void) {
+    return assert_eval_err("{{$x := $y := 7331}}", ERR_TEMPLATE_VAR_UNKNOWN);
+}
+
+nutest_result template_var_define_nil(void) {
+    return assert_eval_err("{{$var:=nil}}abc", ERR_TEMPLATE_KEYWORD_UNEXPECTED);
+}
+
+nutest_result template_var_define_within_if(void) {
+    return assert_eval_null("{{if $var:=345}}success{{end}}", "success");
+}
+
+nutest_result template_var_define_within_with(void) {
+    return assert_eval_null("{{with $var:=678}}yay{{end}}", "yay");
+}
+
 nutest_result template_var_assign_undefined(void) {
     return assert_eval_err("{{$undefined=`pppp`}}", ERR_TEMPLATE_VAR_UNKNOWN);
 }
@@ -391,6 +407,10 @@ int main() {
     nutest_register(template_var_dollar);
     nutest_register(template_var_unknown);
     nutest_register(template_var_define);
+    nutest_register(template_var_define_nested);
+    nutest_register(template_var_define_nil);
+    nutest_register(template_var_define_within_if);
+    nutest_register(template_var_define_within_with);
     nutest_register(template_var_assign_undefined);
     nutest_register(template_var_redefine);
     nutest_register(template_var_scope_kept);
