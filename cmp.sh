@@ -86,6 +86,8 @@ testcase '{{ if $a := $b := 2345 }}{{$a}}{{end}}' 'null'
 testcase '{{ if $a := 2345 }}{{$a}}{{end}}{{$a}}' 'null'
 testcase '{{ with $a := 4567 }}{{$a}}{{end}}' 'null'
 testcase '{{ range $a := 6789 }}{{$a}}{{end}}' 'null'
+testcase '{{ range . }} {{ if . }} {{ $x := 7 }}c {{ else }} d{{ $x = 13 }} {{ end }} {{ end }}' '[true, false]'
+testcase '{{ range . }} {{ if . }} {{ $x }} {{ end }} {{ $x := 7 }} {{ end }}' '[false, true]'
 
 if [ $FAILS -ne 0 ]; then
     printf "\nencountered %d failures\n" $FAILS

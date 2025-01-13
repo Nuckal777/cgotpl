@@ -978,7 +978,6 @@ int template_pipeline_noop(stream* in, state* state, size_t start_depth) {
 int template_noop(stream* in, state* state) {
     unsigned char cp[4];
     size_t cp_len;
-    stack_push_frame(&state->stack);
     size_t start_depth = state->stack.len;
     int err = 0;
     while (true) {
@@ -1001,7 +1000,6 @@ int template_noop(stream* in, state* state) {
             return err;
         }
         if (state->return_reason == RETURN_REASON_END || state->return_reason == RETURN_REASON_ELSE) {
-            stack_pop_frame(&state->stack);
             return 0;
         }
     }
@@ -1013,6 +1011,7 @@ int template_if(stream* in, state* state) {
     json_value nothing = JSON_NULL;
     bool any_branch = false;
     while (true) {
+        stack_push_frame(&state->stack);
         json_value cond;
         int err = template_parse_arg(in, state, &cond);
         if (err != 0) {
@@ -1039,6 +1038,7 @@ int template_if(stream* in, state* state) {
         if (state->return_reason != RETURN_REASON_BREAK && state->return_reason != RETURN_REASON_CONTINUE) {
             state->return_reason = RETURN_REASON_REGULAR;
         }
+        stack_pop_frame(&state->stack);
         if (!is_else) {  // end, break, continue
             return 0;
         }
@@ -1062,11 +1062,13 @@ int template_if(stream* in, state* state) {
     if (err != 0) {
         return err;
     }
+    stack_push_frame(&state->stack);
     if (any_branch) {
         err = template_noop(in, state);
     } else {
         err = template_plain(in, state);
     }
+    stack_pop_frame(&state->stack);
     if (err != 0) {
         return err;
     }
@@ -1162,6 +1164,7 @@ bool value_iter_next(value_iter* iter, value_iter_out* out) {
 int template_range(stream* in, state* state) {
     json_value nothing = JSON_NULL;
     json_value arg;
+    stack_push_frame(&state->stack); // holds arg if var def
     int err = template_parse_arg(in, state, &arg);
     if (err != 0) {
         return err;
@@ -1181,6 +1184,7 @@ int template_range(stream* in, state* state) {
         bool is_else = state->return_reason == RETURN_REASON_ELSE;
         state->return_reason = RETURN_REASON_REGULAR;
         if (!is_else) {
+            stack_pop_frame(&state->stack);
             return 0;
         }
         err = template_end_pipeline(in, state, &nothing);
@@ -1191,6 +1195,7 @@ int template_range(stream* in, state* state) {
         if (err != 0) {
             return err;
         }
+        stack_pop_frame(&state->stack);
         state->return_reason = RETURN_REASON_REGULAR;
         return 0;
     }
@@ -1214,10 +1219,12 @@ int template_range(stream* in, state* state) {
         }
         // post range pipeline
         state->dot = &out.val;
+        stack_push_frame(&state->stack);
         err = template_plain(in, state);
         if (err != 0) {
             goto cleanup;
         }
+        stack_pop_frame(&state->stack);
         long post_pos;
         err = stream_pos(in, &post_pos);
         if (err != 0) {
@@ -1232,6 +1239,7 @@ int template_range(stream* in, state* state) {
         }
         state->return_reason = RETURN_REASON_REGULAR;
     }
+    stack_pop_frame(&state->stack);
     // find the terminating end/else pipeline.
     // each iteration of the iteration loop could
     // be terminated early by a break/continue statement.
@@ -1271,6 +1279,7 @@ int template_with(stream* in, state* state) {
     json_value nothing = JSON_NULL;
     bool any_branch = false;
     while (true) {
+        stack_push_frame(&state->stack);
         json_value arg;
         int err = template_parse_arg(in, state, &arg);
         if (err == ERR_TEMPLATE_KEY_UNKNOWN) {
@@ -1304,6 +1313,7 @@ int template_with(stream* in, state* state) {
         if (state->return_reason != RETURN_REASON_BREAK && state->return_reason != RETURN_REASON_CONTINUE) {
             state->return_reason = RETURN_REASON_REGULAR;
         }
+        stack_pop_frame(&state->stack);
         if (!is_else) {  // end, break, continue
             return 0;
         }
@@ -1327,11 +1337,13 @@ int template_with(stream* in, state* state) {
     if (err != 0) {
         return err;
     }
+    stack_push_frame(&state->stack);
     if (any_branch) {
         err = template_noop(in, state);
     } else {
         err = template_plain(in, state);
     }
+    stack_pop_frame(&state->stack);
     if (err != 0) {
         return err;
     }
@@ -1520,8 +1532,6 @@ int template_plain(stream* in, state* state) {
     unsigned char cp[4];
     size_t cp_len;
     int err = 0;
-    stack_push_frame(&state->stack);
-
     while (true) {
         err = stream_next_utf8_cp(in, cp, &cp_len);
         if (err != 0) {
@@ -1552,12 +1562,11 @@ int template_plain(stream* in, state* state) {
             return err;
         }
         if (state->return_reason != RETURN_REASON_REGULAR) {
-            if (state->stack.len == 2) {
+            if (state->stack.len == 1) {
                 return ERR_TEMPLATE_KEYWORD_UNEXPECTED;
             } else {
                 state->out_nospace = state->out.len;
             }
-            stack_pop_frame(&state->stack);
             return 0;
         }
         state->out_nospace = state->out.len;
@@ -1587,7 +1596,7 @@ int template_eval(const char* tpl, size_t n, json_value* dot, char** out) {
     buf_init(&state.out);
     template_init_stack(&state.stack, dot);
     int err = template_plain(&in, &state);
-    if (err == EOF && state.stack.len == 2) {
+    if (err == EOF && state.stack.len == 1) {
         err = 0;
     }
     buf_append(&state.out, "\0", 1);
