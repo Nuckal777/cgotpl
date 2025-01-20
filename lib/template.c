@@ -246,6 +246,7 @@ int template_parse_number(stream* in, double* out) {
     int frac_allowed = true;
     int sign_allowed = true;
     int is_hex = false;
+    int has_content = false;
     char buf[128];
     size_t buf_idx = 0;
     while (buf_idx < sizeof(buf)) {
@@ -281,6 +282,7 @@ int template_parse_number(stream* in, double* out) {
             case '8':
             case '9':
                 sign_allowed = false;
+                has_content = true;
                 break;
             case 'a':
             case 'A':
@@ -295,6 +297,7 @@ int template_parse_number(stream* in, double* out) {
                 if (!is_hex) {
                     return ERR_TEMPLATE_INVALID_SYNTAX;
                 }
+                has_content = true;
                 sign_allowed = false;
                 break;
             case 'e':
@@ -325,6 +328,9 @@ int template_parse_number(stream* in, double* out) {
                 frac_allowed = false;
                 break;
             default:
+                if (!has_content) {
+                    return ERR_TEMPLATE_INVALID_SYNTAX;
+                }
                 buf[buf_idx] = 0;
                 *out = strtod(buf, NULL);
                 if (errno == ERANGE) {
@@ -1082,6 +1088,131 @@ int template_if(stream* in, state* state) {
 }
 
 typedef struct {
+    json_value iterable;
+    char* key_name;
+    char* value_name;
+} range_params;
+
+void range_params_free(range_params* params) {
+    free(params->key_name);
+    free(params->value_name);
+}
+
+// requires fresh stack frame
+int template_parse_range_params(state* state, stream* in, range_params* params) {
+    params->iterable = JSON_NULL;
+    params->key_name = NULL;
+    params->value_name = NULL;
+    // start post range keyword
+    int err = template_skip_whitespace(in);
+    if (err != 0) {
+        return err;
+    }
+    unsigned char cp[4];
+    size_t cp_len;
+    err = stream_next_utf8_cp(in, cp, &cp_len);
+    if (err != 0) {
+        goto cleanup;
+    }
+    if (cp_len != 1) {
+        err = ERR_TEMPLATE_INVALID_SYNTAX;
+        goto cleanup;
+    }
+    // if not starts with $ => parse_arg
+    if (cp[0] != '$') {
+        err = stream_seek(in, -1);
+        if (err != 0) {
+            goto cleanup;
+        }
+        err = template_parse_arg(in, state, &params->iterable);
+        goto cleanup;
+    }
+    err = template_parse_ident(in, state);
+    if (err != 0) {
+        goto cleanup;
+    }
+    err = template_skip_whitespace(in);
+    if (err != 0) {
+        goto cleanup;
+    }
+    err = stream_next_utf8_cp(in, cp, &cp_len);
+    if (err != 0) {
+        goto cleanup;
+    }
+    if (cp_len != 1) {
+        err = ERR_TEMPLATE_INVALID_SYNTAX;
+        goto cleanup;
+    }
+    const json_value* var;
+    switch (cp[0]) {
+        case ',':
+            err = template_skip_whitespace(in);
+            if (err != 0) {
+                goto cleanup;
+            }
+            err = stream_next_utf8_cp(in, cp, &cp_len);
+            if (err != 0) {
+                goto cleanup;
+            }
+            if (cp_len != 1 || cp[0] != '$') {
+                err = ERR_TEMPLATE_INVALID_SYNTAX;
+                goto cleanup;
+            }
+            params->key_name = strdup(state->ident);
+            err = template_parse_ident(in, state);
+            if (err != 0) {
+                goto cleanup;
+            }
+            err = template_skip_whitespace(in);
+            if (err != 0) {
+                goto cleanup;
+            }
+            err = stream_next_utf8_cp(in, cp, &cp_len);
+            if (err != 0) {
+                goto cleanup;
+            }
+            if (cp_len != 1 || cp[0] != ':') {
+                err = ERR_TEMPLATE_INVALID_SYNTAX;
+                goto cleanup;
+            }
+            // deliberate fallthrough
+        case ':':
+            err = stream_next_utf8_cp(in, cp, &cp_len);
+            if (err != 0) {
+                goto cleanup;
+            }
+            if (cp_len != 1 || cp[0] != '=') {
+                err = ERR_TEMPLATE_INVALID_SYNTAX;
+                goto cleanup;
+            }
+            params->value_name = strdup(state->ident);
+            err = template_parse_arg(in, state, &params->iterable);
+            goto cleanup;
+        case '-':
+        case '}':
+            var = stack_find_var(&state->stack, state->ident);
+            if (var == NULL) {
+                err = ERR_TEMPLATE_VAR_UNKNOWN;
+                goto cleanup;
+            }
+            params->iterable = *var;
+            err = stream_seek(in, -1);
+            goto cleanup;
+        default:
+            err = ERR_TEMPLATE_INVALID_SYNTAX;
+            goto cleanup;
+    }
+cleanup:
+    if (err != 0){
+        range_params_free(params);
+        params->key_name = NULL;
+        params->value_name = NULL;
+        params->iterable = JSON_NULL;
+    }
+    return err;
+}
+
+typedef struct {
     int ty;
     size_t count;
     size_t len;
@@ -1163,53 +1294,54 @@ bool value_iter_next(value_iter* iter, value_iter_out* out) {
 
 int template_range(stream* in, state* state) {
     json_value nothing = JSON_NULL;
-    json_value arg;
     stack_push_frame(&state->stack); // holds arg if var def
-    int err = template_parse_arg(in, state, &arg);
+    range_params params;
+    value_iter iter = {.ty = JSON_TY_NULL}; // value_iter_free depends on initalized ty
+    int err = template_parse_range_params(state, in, &params);
     if (err != 0) {
-        return err;
+        goto cleanup;
     }
-    if (arg.ty != JSON_TY_ARRAY && arg.ty != JSON_TY_OBJECT) {
-        return ERR_TEMPLATE_NO_ITERABLE;
+    if (params.iterable.ty != JSON_TY_ARRAY && params.iterable.ty != JSON_TY_OBJECT) {
+        err = ERR_TEMPLATE_NO_ITERABLE;
+        goto cleanup;
     }
-    if (is_empty(&arg)) {
+    if (is_empty(&params.iterable)) {
         err = template_end_pipeline(in, state, &nothing);
         if (err != 0) {
-            return err;
+            goto cleanup;
         }
         err = template_noop(in, state);
         if (err != 0) {
-            return err;
+            goto cleanup;
         }
         bool is_else = state->return_reason == RETURN_REASON_ELSE;
         state->return_reason = RETURN_REASON_REGULAR;
         if (!is_else) {
             stack_pop_frame(&state->stack);
-            return 0;
+            goto cleanup;
         }
         err = template_end_pipeline(in, state, &nothing);
         if (err != 0) {
-            return err;
+            goto cleanup;
         }
         err = template_plain(in, state);
         if (err != 0) {
-            return err;
+            goto cleanup;
         }
         stack_pop_frame(&state->stack);
         state->return_reason = RETURN_REASON_REGULAR;
-        return 0;
+        goto cleanup;
     }
 
     json_value* current = state->dot;
     long pre_pos;
     err = stream_pos(in, &pre_pos);
     if (err != 0) {
-        return err;
+        goto cleanup;
     }
-    value_iter iter;
-    err = value_iter_new(&iter, &arg);
+    err = value_iter_new(&iter, &params.iterable);
     if (err != 0) {
-        return err;
+        goto cleanup;
     }
     value_iter_out out;
     while (value_iter_next(&iter, &out)) {
@@ -1220,6 +1352,16 @@ int template_range(stream* in, state* state) {
         // post range pipeline
         state->dot = &out.val;
         stack_push_frame(&state->stack);
+        if (params.key_name != NULL) {
+            json_value* copy = malloc(sizeof(json_value));
+            json_value_copy(copy, &out.key);
+            stack_set_var(&state->stack, strdup(params.key_name), copy);
+        }
+        if (params.value_name != NULL) {
+            json_value* copy = malloc(sizeof(json_value));
+            json_value_copy(copy, &out.val);
+            stack_set_var(&state->stack, strdup(params.value_name), copy);
+        }
         err = template_plain(in, state);
         if (err != 0) {
             goto cleanup;
@@ -1272,6 +1414,7 @@ int template_range(stream* in, state* state) {
     state->return_reason = RETURN_REASON_REGULAR;
 cleanup:
     value_iter_free(&iter);
+    range_params_free(&params);
     return err;
 }
 

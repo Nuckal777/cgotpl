@@ -343,6 +343,18 @@ nutest_result template_var_scope_lost(void) {
     return assert_eval_err("{{ with $ }}{{$y := 3}}{{end}}{{$y}}", ERR_TEMPLATE_VAR_UNKNOWN);
 }
 
+nutest_result template_loop_var_value(void) {
+    return assert_eval_data("{{ range $val := . -}} {{ $val }} {{- end }}", "[9,8,7]", "987");
+}
+
+nutest_result template_loop_var_arr(void) {
+    return assert_eval_data("{{ range $idx,$val := . -}} {{ $idx }}{{ $val }} {{- end }}", "[\"a\",\"b\"]", "0a1b");
+}
+
+nutest_result template_loop_var_map(void) {
+    return assert_eval_data("{{ range $key,$val := . -}} {{ $key }}{{ $val }} {{- end }}", "{\"a\": 9, \"b\": 8}", "a9b8");
+}
+
 int main() {
     nutest_register(template_identity);
     nutest_register(template_empty_pipeline);
@@ -415,5 +427,8 @@ int main() {
     nutest_register(template_var_redefine);
     nutest_register(template_var_scope_kept);
     nutest_register(template_var_scope_lost);
+    nutest_register(template_loop_var_value);
+    nutest_register(template_loop_var_arr);
+    nutest_register(template_loop_var_map);
     return nutest_run();
 }
