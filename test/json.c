@@ -108,7 +108,7 @@ nutest_result json_parse_number_fail(const char* in) {
     stream_open_memory(&st, in, strlen(in));
     json_value val;
     int err = json_parse(&st, &val);
-    NUTEST_ASSERT(err == 0);
+    NUTEST_ASSERT(err != 0);
     return NUTEST_PASS;
 }
 
@@ -118,6 +118,14 @@ nutest_result json_parse_number_leading_zero(void) {
 
 nutest_result json_parse_number_negative_leading_zero(void) {
     return json_parse_number_fail("-07");
+}
+
+nutest_result json_parse_number_plus(void) {
+    return json_parse_number_fail("+");
+}
+
+nutest_result json_parse_number_minus(void) {
+    return json_parse_number_fail("-");
 }
 
 nutest_result json_parse_array_empty(void) {
@@ -296,6 +304,8 @@ int main() {
     nutest_register(json_parse_number_zero);
     nutest_register(json_parse_number_leading_zero);
     nutest_register(json_parse_number_negative_leading_zero);
+    nutest_register(json_parse_number_plus);
+    nutest_register(json_parse_number_minus);
     nutest_register(json_parse_array_empty);
     nutest_register(json_parse_array_numbers);
     nutest_register(json_parse_array_nested);

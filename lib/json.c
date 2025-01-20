@@ -214,12 +214,17 @@ int json_parse_number(stream* st, char first, double* out, char* last) {
         zero_allowed = false;
     }
     int frac_allowed = true;
+    int has_content = first >= '0' && first <= '9';
+    bool leading_zero = first == '0';
     char buf[128];
     buf[0] = first;
     size_t buf_idx = 1;
     while (buf_idx < sizeof(buf)) {
         int err = stream_next_utf8_cp(st, cp, &cp_len);
         if (err == EOF) {
+            if (!has_content) {
+                return ERR_JSON_INVALID_SYNTAX;
+            }
             buf[buf_idx] = 0;
             *out = strtod(buf, NULL);
             if (errno == ERANGE) {
@@ -237,6 +242,10 @@ int json_parse_number(stream* st, char first, double* out, char* last) {
                 if (!zero_allowed && (buf_idx != 1 || first != '-')) {
                     return ERR_JSON_INVALID_SYNTAX;
                 }
+                if (buf_idx == 1 && first == '-') {
+                    leading_zero = true;
+                }
+                has_content = true;
                 buf[buf_idx] = cp[0];
                 buf_idx++;
                 break;
@@ -249,7 +258,11 @@ int json_parse_number(stream* st, char first, double* out, char* last) {
             case '7':
             case '8':
             case '9':
+                if (leading_zero) {
+                    return ERR_JSON_INVALID_SYNTAX;
+                }
                 zero_allowed = true;
+                has_content = true;
                 buf[buf_idx] = cp[0];
                 buf_idx++;
                 break;
@@ -257,6 +270,7 @@ int json_parse_number(stream* st, char first, double* out, char* last) {
             case 'E':
                 frac_allowed = false;
                 zero_allowed = false;
+                leading_zero = false;
                 buf[buf_idx] = cp[0];
                 buf_idx++;
                 if (buf_idx == sizeof(buf)) {
@@ -276,6 +290,7 @@ int json_parse_number(stream* st, char first, double* out, char* last) {
                 if (!frac_allowed) {
                     return ERR_JSON_INVALID_SYNTAX;
                 }
+                leading_zero = false;
                 frac_allowed = false;
                 buf[buf_idx] = cp[0];
                 buf_idx++;
@@ -287,6 +302,9 @@ int json_parse_number(stream* st, char first, double* out, char* last) {
             case 0x09:
             case 0x0a:
             case 0x0d:
+                if (!has_content) {
+                    return ERR_JSON_INVALID_SYNTAX;
+                }
                 buf[buf_idx] = 0;
                 *out = strtod(buf, NULL);
                 if (errno == ERANGE) {
