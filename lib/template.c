@@ -224,20 +224,15 @@ json_value state_set_scratch(state* state, json_value val) {
 int template_skip_whitespace(stream* in) {
     unsigned char cp[4];
     size_t cp_len;
-    int err = 0;
     bool space = true;
     while (space) {
-        err = stream_next_utf8_cp(in, cp, &cp_len);
+        int err = stream_next_utf8_cp(in, cp, &cp_len);
         if (err != 0) {
             return err;
         }
         space = isspace(cp[0]);
     }
-    err = stream_seek(in, -cp_len);
-    if (err != 0) {
-        return err;
-    }
-    return err;
+    return stream_seek(in, -cp_len);
 }
 
 int template_parse_number(stream* in, double* out) {
@@ -1261,28 +1256,24 @@ typedef struct {
 } value_iter_out;
 
 bool value_iter_next(value_iter* iter, value_iter_out* out) {
-    const json_array* arr;
-    const hashmap* obj;
     if (iter->count >= iter->len) {
         return false;
     }
     switch (iter->ty) {
         case JSON_TY_ARRAY:
-            arr = iter->inner.arr;
             out->idx = iter->count;
             out->key.ty = JSON_TY_NUMBER;
             out->key.inner.num = iter->count;
-            out->val = arr->data[iter->count];
+            out->val = iter->inner.arr->data[iter->count];
             iter->count++;
             return true;
         case JSON_TY_OBJECT:
-            obj = iter->inner.obj;
             out->idx = iter->count;
             out->key.ty = JSON_TY_STRING;
             char* key = iter->keys[iter->count];
             out->key.inner.str = key;
             json_value* val;
-            if (!hashmap_get(obj, key, (const void**)&val)) {
+            if (!hashmap_get(iter->inner.obj, key, (const void**)&val)) {
                 assert("key removed from hashmap during iteration");
             }
             out->val = *val;
