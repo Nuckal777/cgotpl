@@ -150,7 +150,7 @@ nutest_result template_if_no_arg(void) {
 }
 
 nutest_result template_if_no_end(void) {
-    return assert_eval_err("{{ if true -}} result", EOF);
+    return assert_eval_err("{{ if true -}} result", ERR_TEMPLATE_UNEXPECTED_EOF);
 }
 
 nutest_result template_if_true(void) {

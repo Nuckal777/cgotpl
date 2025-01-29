@@ -18,6 +18,7 @@
 #define ERR_TEMPLATE_KEY_UNKNOWN -910
 #define ERR_TEMPLATE_VAR_UNKNOWN -911
 #define ERR_TEMPLATE_NO_MUTATION -912
+#define ERR_TEMPLATE_UNEXPECTED_EOF -913
 
 // tpl is a pointer to a template string from which up to n bytes are read.
 // dot is the inital dot value. out will be filled with the result of templating

@@ -134,10 +134,18 @@ bool is_empty(json_value* val) {
     assert(0);
 }
 
+#define STACK_REFS_CAP 4
+
+typedef struct {
+    hashmap data;
+    size_t refs_len;
+    char* refs[STACK_REFS_CAP];
+} stack_frame;
+
 typedef struct {
     size_t len;
     size_t cap;
-    hashmap* frames;
+    stack_frame* frames;
 } stack;
 
 #define DEFAULT_STACK_CAP 8
@@ -145,11 +153,17 @@ typedef struct {
 void stack_new(stack* s) {
     s->len = 0;
     s->cap = DEFAULT_STACK_CAP;
-    s->frames = malloc(sizeof(hashmap) * s->cap);
+    s->frames = malloc(sizeof(stack_frame) * s->cap);
     assert(s->frames);
 }
 
 void stack_free_entry(entry* entry, void* userdata) {
+    stack_frame* frame = (stack_frame*)userdata;
+    for (size_t i = 0; i < frame->refs_len; i++) {
+        if (strcmp(entry->key, frame->refs[i]) == 0) {
+            return;
+        }
+    }
     free(entry->key);
     json_value_free(entry->value);
     free(entry->value);
@@ -157,8 +171,8 @@ void stack_free_entry(entry* entry, void* userdata) {
 
 void stack_free(stack* s) {
     for (size_t i = 0; i < s->len; i++) {
-        hashmap_iter(&s->frames[i], NULL, stack_free_entry);
-        hashmap_free(&s->frames[i]);
+        hashmap_iter(&s->frames[i].data, s->frames + i, stack_free_entry);
+        hashmap_free(&s->frames[i].data);
     }
     free(s->frames);
 }
@@ -166,31 +180,56 @@ void stack_free(stack* s) {
 void stack_push_frame(stack* s) {
     if (s->len == s->cap) {
         s->cap = s->cap * 3 / 2;
-        s->frames = realloc(s->frames, sizeof(hashmap) * s->cap);
+        s->frames = realloc(s->frames, sizeof(stack_frame) * s->cap);
         assert(s->frames);
     }
-    hashmap_new(&s->frames[s->len], hashmap_strcmp, hashmap_strlen, HASH_FUNC_DJB2);
+    hashmap_new(&s->frames[s->len].data, hashmap_strcmp, hashmap_strlen, HASH_FUNC_DJB2);
+    s->frames[s->len].refs_len = 0;
     s->len++;
 }
 
 void stack_pop_frame(stack* s) {
     assert(s->len > 0);
-    hashmap_iter(&s->frames[s->len - 1], NULL, stack_free_entry);
-    hashmap_free(&s->frames[s->len - 1]);
+    hashmap_iter(&s->frames[s->len - 1].data, &s->frames[s->len - 1], stack_free_entry);
+    hashmap_free(&s->frames[s->len - 1].data);
     s->len--;
 }
 
 void stack_set_var(stack* s, char* var, json_value* value) {
-    entry previous = hashmap_insert(&s->frames[s->len - 1], (void*)var, value);
+    stack_frame* current = &s->frames[s->len - 1];
+    entry previous = hashmap_insert(&current->data, (void*)var, value);
     if (previous.key != NULL) {
-        stack_free_entry(&previous, NULL);
+        stack_free_entry(&previous, current);
     }
+    for (size_t i = 0; i < current->refs_len; i++) {
+        if (strcmp(var, current->refs[i]) == 0) {
+            for (size_t j = i + 1; j < current->refs_len; j++) {
+                current->refs[j - 1] = current->refs[j];
+            }
+            current->refs_len--;
+            return;
+        }
+    }
+}
+
+int stack_set_ref(stack* s, char* var, json_value* value) {
+    stack_frame* current = &s->frames[s->len - 1];
+    if (current->refs_len == STACK_REFS_CAP) {
+        return ERR_TEMPLATE_BUFFER_OVERFLOW;
+    }
+    entry previous = hashmap_insert(&current->data, (void*)var, value);
+    if (previous.key != NULL) {
+        stack_free_entry(&previous, current);
+    }
+    current->refs[current->refs_len] = var;
+    current->refs_len++;
+    return 0;
 }
 
 const json_value* stack_find_var(stack* s, const char* var) {
     for (ptrdiff_t i = s->len - 1; i >= 0; i--) {
         const json_value* out;
-        if (hashmap_get(&s->frames[i], var, (const void**)&out)) {
+        if (hashmap_get(&s->frames[i].data, var, (const void**)&out)) {
             return out;
         }
     }
@@ -878,7 +917,7 @@ int template_parse_noop_ident(stream* in, state* state, char leading) {
     return ERR_TEMPLATE_BUFFER_OVERFLOW;
 }
 
-int template_pipeline_noop(stream* in, state* state, size_t start_depth) {
+int template_pipeline_noop(stream* in, state* state, size_t* depth) {
     unsigned char cp[4];
     size_t cp_len;
     int err = stream_next_utf8_cp(in, cp, &cp_len);
@@ -951,21 +990,21 @@ int template_pipeline_noop(stream* in, state* state, size_t start_depth) {
                     if (ident_count > 0) {
                         return ERR_TEMPLATE_INVALID_SYNTAX;
                     }
-                    stack_push_frame(&state->stack);
+                    (*depth)++;
                 } else if (strcmp("end", state->ident) == 0) {
                     if (ident_count > 0) {
                         return ERR_TEMPLATE_INVALID_SYNTAX;
                     }
-                    if (state->stack.len == start_depth) {
+                    if (*depth == 0) {
                         state->return_reason = RETURN_REASON_END;
                         return 0;
                     }
-                    stack_pop_frame(&state->stack);
+                    (*depth)--;
                 } else if (strcmp("else", state->ident) == 0) {
                     if (ident_count > 0) {
                         return ERR_TEMPLATE_INVALID_SYNTAX;
                     }
-                    if (state->stack.len == start_depth) {
+                    if (*depth == 0) {
                         state->return_reason = RETURN_REASON_ELSE;
                         return 0;
                     }
@@ -979,7 +1018,7 @@ int template_pipeline_noop(stream* in, state* state, size_t start_depth) {
 int template_noop(stream* in, state* state) {
     unsigned char cp[4];
     size_t cp_len;
-    size_t start_depth = state->stack.len;
+    size_t depth = 0;
     int err = 0;
     while (true) {
         err = stream_next_utf8_cp(in, cp, &cp_len);
@@ -996,7 +1035,7 @@ int template_noop(stream* in, state* state) {
         if (cp[0] != '{') {
             continue;
         }
-        err = template_pipeline_noop(in, state, start_depth);
+        err = template_pipeline_noop(in, state, &depth);
         if (err != 0) {
             return err;
         }
@@ -1016,24 +1055,24 @@ int template_if(stream* in, state* state) {
         json_value cond;
         int err = template_parse_arg(in, state, &cond);
         if (err != 0) {
+            stack_pop_frame(&state->stack);
             return err;
         }
         err = template_end_pipeline(in, state, &nothing);
         if (err != 0) {
+            stack_pop_frame(&state->stack);
             return err;
         }
         bool cond_empty = is_empty(&cond);
         if (cond_empty || any_branch) {
             err = template_noop(in, state);
-            if (err != 0) {
-                return err;
-            }
         } else {
             any_branch = true;
             err = template_plain(in, state);
-            if (err != 0) {
-                return err;
-            }
+        }
+        if (err != 0) {
+            stack_pop_frame(&state->stack);
+            return err;
         }
         bool is_else = state->return_reason == RETURN_REASON_ELSE;
         if (state->return_reason != RETURN_REASON_BREAK && state->return_reason != RETURN_REASON_CONTINUE) {
@@ -1198,7 +1237,7 @@ int template_parse_range_params(state* state, stream* in, range_params* params) 
             goto cleanup;
     }
 cleanup:
-    if (err != 0){
+    if (err != 0) {
         range_params_free(params);
         params->key_name = NULL;
         params->value_name = NULL;
@@ -1285,24 +1324,28 @@ bool value_iter_next(value_iter* iter, value_iter_out* out) {
 
 int template_range(stream* in, state* state) {
     json_value nothing = JSON_NULL;
-    stack_push_frame(&state->stack); // holds arg if var def
+    stack_push_frame(&state->stack);  // holds arg if var def
     range_params params;
-    value_iter iter = {.ty = JSON_TY_NULL}; // value_iter_free depends on initalized ty
+    value_iter iter = {.ty = JSON_TY_NULL};  // value_iter_free depends on initalized ty
     int err = template_parse_range_params(state, in, &params);
     if (err != 0) {
+        stack_pop_frame(&state->stack);
         goto cleanup;
     }
     if (params.iterable.ty != JSON_TY_ARRAY && params.iterable.ty != JSON_TY_OBJECT) {
         err = ERR_TEMPLATE_NO_ITERABLE;
+        stack_pop_frame(&state->stack);
         goto cleanup;
     }
     if (is_empty(&params.iterable)) {
         err = template_end_pipeline(in, state, &nothing);
         if (err != 0) {
+            stack_pop_frame(&state->stack);
             goto cleanup;
         }
         err = template_noop(in, state);
         if (err != 0) {
+            stack_pop_frame(&state->stack);
             goto cleanup;
         }
         bool is_else = state->return_reason == RETURN_REASON_ELSE;
@@ -1313,10 +1356,12 @@ int template_range(stream* in, state* state) {
         }
         err = template_end_pipeline(in, state, &nothing);
         if (err != 0) {
+            stack_pop_frame(&state->stack);
             goto cleanup;
         }
         err = template_plain(in, state);
         if (err != 0) {
+            stack_pop_frame(&state->stack);
             goto cleanup;
         }
         stack_pop_frame(&state->stack);
@@ -1328,43 +1373,55 @@ int template_range(stream* in, state* state) {
     long pre_pos;
     err = stream_pos(in, &pre_pos);
     if (err != 0) {
+        stack_pop_frame(&state->stack);
         goto cleanup;
     }
     err = value_iter_new(&iter, &params.iterable);
     if (err != 0) {
+        stack_pop_frame(&state->stack);
         goto cleanup;
     }
     value_iter_out out;
     while (value_iter_next(&iter, &out)) {
         err = template_end_pipeline(in, state, &nothing);
         if (err != 0) {
+            stack_pop_frame(&state->stack);
             goto cleanup;
         }
         // post range pipeline
         state->dot = &out.val;
         stack_push_frame(&state->stack);
         if (params.key_name != NULL) {
-            json_value* copy = malloc(sizeof(json_value));
-            json_value_copy(copy, &out.key);
-            stack_set_var(&state->stack, strdup(params.key_name), copy);
+            err = stack_set_ref(&state->stack, params.key_name, &out.key);
+            if (err != 0) {
+                stack_pop_frame(&state->stack);
+                stack_pop_frame(&state->stack);
+                goto cleanup;
+            }
         }
         if (params.value_name != NULL) {
-            json_value* copy = malloc(sizeof(json_value));
-            json_value_copy(copy, &out.val);
-            stack_set_var(&state->stack, strdup(params.value_name), copy);
+            err = stack_set_ref(&state->stack, params.value_name, &out.val);
+            if (err != 0) {
+                stack_pop_frame(&state->stack);
+                stack_pop_frame(&state->stack);
+                goto cleanup;
+            }
         }
         err = template_plain(in, state);
+        stack_pop_frame(&state->stack);
         if (err != 0) {
+            stack_pop_frame(&state->stack);
             goto cleanup;
         }
-        stack_pop_frame(&state->stack);
         long post_pos;
         err = stream_pos(in, &post_pos);
         if (err != 0) {
+            stack_pop_frame(&state->stack);
             goto cleanup;
         }
         err = stream_seek(in, pre_pos - post_pos);
         if (err != 0) {
+            stack_pop_frame(&state->stack);
             goto cleanup;
         }
         if (state->return_reason == RETURN_REASON_BREAK) {
@@ -1421,27 +1478,27 @@ int template_with(stream* in, state* state) {
             err = 0;
         }
         if (err != 0) {
+            stack_pop_frame(&state->stack);
             return err;
         }
         err = template_end_pipeline(in, state, &nothing);
         if (err != 0) {
+            stack_pop_frame(&state->stack);
             return err;
         }
         bool arg_empty = is_empty(&arg);
         if (arg_empty) {
             err = template_noop(in, state);
-            if (err != 0) {
-                return err;
-            }
         } else {
             any_branch = true;
             json_value* previous = state->dot;
             state->dot = &arg;
             err = template_plain(in, state);
-            if (err != 0) {
-                return err;
-            }
             state->dot = previous;
+        }
+        if (err != 0) {
+            stack_pop_frame(&state->stack);
+            return err;
         }
         bool is_else = state->return_reason == RETURN_REASON_ELSE;
         if (state->return_reason != RETURN_REASON_BREAK && state->return_reason != RETURN_REASON_CONTINUE) {
@@ -1496,13 +1553,25 @@ int template_dispatch_keyword(stream* in, state* state) {
         return err;
     }
     if (strcmp("if", state->ident) == 0) {
-        return template_if(in, state);
+        err = template_if(in, state);
+        if (err == EOF) {
+            return ERR_TEMPLATE_UNEXPECTED_EOF;
+        }
+        return err;
     }
     if (strcmp("range", state->ident) == 0) {
-        return template_range(in, state);
+        err = template_range(in, state);
+        if (err == EOF) {
+            return ERR_TEMPLATE_UNEXPECTED_EOF;
+        }
+        return err;
     }
     if (strcmp("with", state->ident) == 0) {
-        return template_with(in, state);
+        err = template_with(in, state);
+        if (err == EOF) {
+            return ERR_TEMPLATE_UNEXPECTED_EOF;
+        }
+        return err;
     }
     if (strcmp("end", state->ident) == 0) {
         // only used in the non-noop case
@@ -1707,30 +1776,27 @@ int template_plain(stream* in, state* state) {
     }
 }
 
-void template_init_stack(stack* s, json_value* dot) {
-    stack_new(s);
-    stack_push_frame(s);
-    json_value* dollar = malloc(sizeof(json_value));
-    assert(dollar);
-    json_value_copy(dollar, dot);
-    char* dollar_str = malloc(1);
-    assert(dollar_str);
-    *dollar_str = 0;
-    stack_set_var(s, dollar_str, dollar);
-}
-
 int template_eval(const char* tpl, size_t n, json_value* dot, char** out) {
-    stream in;
-    stream_open_memory(&in, tpl, n);
     state state;
     state.dot = dot;
     state.scratch_val = JSON_NULL;
     state.out_nospace = 0;
     state.return_reason = RETURN_REASON_REGULAR;
+    stack_new(&state.stack);
+    stack_push_frame(&state.stack);
+    int err = stack_set_ref(&state.stack, "", dot);
+    if (err != 0) {
+        stack_pop_frame(&state.stack);
+        stack_free(&state.stack);
+        return err;
+    }
     buf_init(&state.out);
-    template_init_stack(&state.stack, dot);
-    int err = template_plain(&in, &state);
-    if (err == EOF && state.stack.len == 1) {
+    stream in;
+    stream_open_memory(&in, tpl, n);
+    err = template_plain(&in, &state);
+    stack_pop_frame(&state.stack);
+    assert(state.stack.len == 0);
+    if (err == EOF && state.stack.len == 0) {
         err = 0;
     }
     buf_append(&state.out, "\0", 1);
