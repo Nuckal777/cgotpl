@@ -1329,64 +1329,53 @@ int template_range(stream* in, state* state) {
     value_iter iter = {.ty = JSON_TY_NULL};  // value_iter_free depends on initalized ty
     int err = template_parse_range_params(state, in, &params);
     if (err != 0) {
-        stack_pop_frame(&state->stack);
-        goto cleanup;
+        goto clean_pop1;
     }
     if (params.iterable.ty != JSON_TY_ARRAY && params.iterable.ty != JSON_TY_OBJECT) {
         err = ERR_TEMPLATE_NO_ITERABLE;
-        stack_pop_frame(&state->stack);
-        goto cleanup;
+        goto clean_pop1;
     }
     if (is_empty(&params.iterable)) {
         err = template_end_pipeline(in, state, &nothing);
         if (err != 0) {
-            stack_pop_frame(&state->stack);
-            goto cleanup;
+            goto clean_pop1;
         }
         err = template_noop(in, state);
         if (err != 0) {
-            stack_pop_frame(&state->stack);
-            goto cleanup;
+            goto clean_pop1;
         }
         bool is_else = state->return_reason == RETURN_REASON_ELSE;
         state->return_reason = RETURN_REASON_REGULAR;
         if (!is_else) {
-            stack_pop_frame(&state->stack);
-            goto cleanup;
+            goto clean_pop1;
         }
         err = template_end_pipeline(in, state, &nothing);
         if (err != 0) {
-            stack_pop_frame(&state->stack);
-            goto cleanup;
+            goto clean_pop1;
         }
         err = template_plain(in, state);
         if (err != 0) {
-            stack_pop_frame(&state->stack);
-            goto cleanup;
+            goto clean_pop1;
         }
-        stack_pop_frame(&state->stack);
         state->return_reason = RETURN_REASON_REGULAR;
-        goto cleanup;
+        goto clean_pop1;
     }
 
     json_value* current = state->dot;
     long pre_pos;
     err = stream_pos(in, &pre_pos);
     if (err != 0) {
-        stack_pop_frame(&state->stack);
-        goto cleanup;
+        goto clean_pop1;
     }
     err = value_iter_new(&iter, &params.iterable);
     if (err != 0) {
-        stack_pop_frame(&state->stack);
-        goto cleanup;
+        goto clean_pop1;
     }
     value_iter_out out;
     while (value_iter_next(&iter, &out)) {
         err = template_end_pipeline(in, state, &nothing);
         if (err != 0) {
-            stack_pop_frame(&state->stack);
-            goto cleanup;
+            goto clean_pop1;
         }
         // post range pipeline
         state->dot = &out.val;
@@ -1394,35 +1383,28 @@ int template_range(stream* in, state* state) {
         if (params.key_name != NULL) {
             err = stack_set_ref(&state->stack, params.key_name, &out.key);
             if (err != 0) {
-                stack_pop_frame(&state->stack);
-                stack_pop_frame(&state->stack);
-                goto cleanup;
+                goto clean_pop2;
             }
         }
         if (params.value_name != NULL) {
             err = stack_set_ref(&state->stack, params.value_name, &out.val);
             if (err != 0) {
-                stack_pop_frame(&state->stack);
-                stack_pop_frame(&state->stack);
-                goto cleanup;
+                goto clean_pop2;
             }
         }
         err = template_plain(in, state);
         stack_pop_frame(&state->stack);
         if (err != 0) {
-            stack_pop_frame(&state->stack);
-            goto cleanup;
+            goto clean_pop1;
         }
         long post_pos;
         err = stream_pos(in, &post_pos);
         if (err != 0) {
-            stack_pop_frame(&state->stack);
-            goto cleanup;
+            goto clean_pop1;
         }
         err = stream_seek(in, pre_pos - post_pos);
         if (err != 0) {
-            stack_pop_frame(&state->stack);
-            goto cleanup;
+            goto clean_pop1;
         }
         if (state->return_reason == RETURN_REASON_BREAK) {
             break;
@@ -1460,6 +1442,12 @@ int template_range(stream* in, state* state) {
         goto cleanup;
     }
     state->return_reason = RETURN_REASON_REGULAR;
+    goto cleanup;
+
+clean_pop2:
+    stack_pop_frame(&state->stack);
+clean_pop1:
+    stack_pop_frame(&state->stack);
 cleanup:
     value_iter_free(&iter);
     range_params_free(&params);
