@@ -1,5 +1,6 @@
 #include "template.h"
 
+#include <stdio.h>
 #include <string.h>
 
 #include "test.h"
@@ -8,6 +9,7 @@ nutest_result assert_eval_null(const char* tpl, const char* expected) {
     json_value val = JSON_NULL;
     char* out;
     int err = template_eval(tpl, strlen(tpl), &val, &out);
+    printf("err: %d\n", err);
     NUTEST_ASSERT(err == 0);
     NUTEST_ASSERT(strcmp(expected, out) == 0);
     free(out);
@@ -83,6 +85,22 @@ nutest_result template_strip_whitespace_pipeline(void) {
 
 nutest_result template_strip_pre_no_inner_space(void) {
     return assert_eval_err(" {{-false}}", ERR_TEMPLATE_INVALID_SYNTAX);
+}
+
+nutest_result template_comment_plain(void) {
+    return assert_eval_null("2 {{/* this is a comment */}} 1", "2  1");
+}
+
+nutest_result template_comment_strip(void) {
+    return assert_eval_null("2 {{- /* this is a comment */ -}} 1", "21");
+}
+
+nutest_result template_comment_pre_content(void) {
+    return assert_eval_err("2 {{ 43 /* this is a comment */}} 1", ERR_TEMPLATE_INVALID_SYNTAX);
+}
+
+nutest_result template_comment_post_content(void) {
+    return assert_eval_err("2 {{/* this is a comment */ 34}} 1", ERR_TEMPLATE_INVALID_SYNTAX);
 }
 
 nutest_result template_print_positive_number(void) {
@@ -363,6 +381,10 @@ int main() {
     nutest_register(template_strip_whitespace_multi);
     nutest_register(template_strip_whitespace_pipeline);
     nutest_register(template_strip_pre_no_inner_space);
+    nutest_register(template_comment_plain);
+    nutest_register(template_comment_strip);
+    nutest_register(template_comment_pre_content);
+    nutest_register(template_comment_post_content);
     nutest_register(template_print_positive_number);
     nutest_register(template_print_negative_number);
     nutest_register(template_print_regular_str);

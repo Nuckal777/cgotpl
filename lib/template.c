@@ -269,6 +269,9 @@ int template_skip_whitespace(stream* in) {
         if (err != 0) {
             return err;
         }
+        if (cp_len != 1) {
+            break;
+        }
         space = isspace(cp[0]);
     }
     return stream_seek(in, -cp_len);
@@ -1600,19 +1603,82 @@ int template_dispatch_func(stream* in, state* state, json_value* result) {
     return ERR_TEMPLATE_FUNC_UNKNOWN;
 }
 
+int template_skip_comment(stream* in) {
+    unsigned char cp[4];
+    size_t cp_len;
+    while (true) {
+        int err = stream_next_utf8_cp(in, cp, &cp_len);
+        if (err != 0) {
+            return err;
+        }
+        if (cp_len != 1 || cp[0] != '*') {
+            continue;
+        }
+        err = stream_next_utf8_cp(in, cp, &cp_len);
+        if (err != 0) {
+            return err;
+        }
+        if (cp_len != 1 || cp[0] != '/') {
+            continue;
+        }
+        err = stream_next_utf8_cp(in, cp, &cp_len);
+        if (err != 0) {
+            return err;
+        }
+        if (cp_len != 1) {
+            return ERR_TEMPLATE_INVALID_SYNTAX;
+        }
+        switch (cp[0]) {
+            case '}':
+                return stream_seek(in, -cp_len);
+            case ' ':
+                err = stream_next_utf8_cp(in, cp, &cp_len);
+                if (err != 0) {
+                    return err;
+                }
+                if (cp_len != 1 || cp[0] != '-') {
+                    return ERR_TEMPLATE_INVALID_SYNTAX;
+                }
+                return stream_seek(in, -cp_len);
+            default:
+                return ERR_TEMPLATE_INVALID_SYNTAX;
+        }
+    }
+    assert(0);
+}
+
 int template_dispatch_pipeline(stream* in, state* state, json_value* result) {
     unsigned char cp[4];
     size_t cp_len;
-    int err = template_skip_whitespace(in);
-    if (err != 0) {
-        return err;
-    }
-    err = stream_next_utf8_cp(in, cp, &cp_len);
+    int err = stream_next_utf8_cp(in, cp, &cp_len);
     if (err != 0) {
         return err;
     }
     if (cp_len != 1) {
         return ERR_TEMPLATE_INVALID_SYNTAX;
+    }
+    if (cp[0] == '/') {
+        err = stream_next_utf8_cp(in, cp, &cp_len);
+        if (err != 0) {
+            return err;
+        }
+        if (cp_len != 1 || cp[0] != '*') {
+            return ERR_TEMPLATE_INVALID_SYNTAX;
+        }
+        return template_skip_comment(in);
+    }
+    if (isspace(cp[0])) {
+        err = template_skip_whitespace(in);
+        if (err != 0) {
+            return err;
+        }
+        err = stream_next_utf8_cp(in, cp, &cp_len);
+        if (err != 0) {
+            return err;
+        }
+        if (cp_len != 1) {
+            return ERR_TEMPLATE_INVALID_SYNTAX;
+        }
     }
     if (cp[0] == '$') {
         long pre_pos;
@@ -1696,27 +1762,33 @@ int template_start_pipeline(stream* in, state* state) {
     if (err != 0) {
         return err;
     }
+    if (cp_len != 1) {
+        return ERR_TEMPLATE_INVALID_SYNTAX;
+    }
     if (cp[0] != '-') {
         err = stream_seek(in, -cp_len);
         if (err != 0) {
             return err;
         }
-        return template_invoke_pipeline(in, state);
+        return template_invoke_pipeline(in, state); // just past "{{"
     }
     size_t off = cp_len;
     err = stream_next_utf8_cp(in, cp, &cp_len);
     if (err != 0) {
         return err;
     }
+    if (cp_len != 1) {
+        return ERR_TEMPLATE_INVALID_SYNTAX;
+    }
     if (cp[0] != ' ') {
         err = stream_seek(in, -cp_len - off);
         if (err != 0) {
             return err;
         }
-        return template_invoke_pipeline(in, state);
+        return template_invoke_pipeline(in, state); // just past "{{", "-" is guaranteed after
     }
     state->out.len = state->out_nospace;
-    return template_invoke_pipeline(in, state);
+    return template_invoke_pipeline(in, state); // past "{{- "
 }
 
 int template_plain(stream* in, state* state) {

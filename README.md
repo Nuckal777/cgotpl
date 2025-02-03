@@ -75,7 +75,7 @@ Currently, basic control-flow and data access is implemented.
 | Feature                                       | State                                              |
 | --------------------------------------------- | -------------------------------------------------- |
 | Trim whitespace `{{-` and `-}}`               | :white_check_mark:                                 |
-| `{{/* comments */}}`                          | :x:                                                |
+| `{{/* comments */}}`                          | :white_check_mark:                                 |
 | Default Textual Representation `{{pipeline}}` | :white_check_mark:                                 |
 | Literals                                      | :construction: (Some escape sequences are missing) |
 | `{{if pipeline}} T1 {{end}}`                  | :white_check_mark:                                 |
