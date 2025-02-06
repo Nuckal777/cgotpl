@@ -607,7 +607,12 @@ int template_parse_var_value(stream* in, state* state, json_value* result) {
     return 0;
 }
 
-int template_parse_value(stream* in, state* state, json_value* result, unsigned char first) {
+typedef struct {
+    json_value val;
+    bool is_scratch;
+} tracked_value;
+
+int template_parse_value(stream* in, state* state, tracked_value* result, unsigned char first) {
     unsigned char cp[4];
     size_t cp_len;
     int err = 0;
@@ -615,6 +620,7 @@ int template_parse_value(stream* in, state* state, json_value* result, unsigned 
     size_t seek_back = -1;
     size_t identifier_len = 0;
     json_value out = JSON_NULL;
+    result->is_scratch = false;
     long pre_pos;
     switch (first) {
         case 't':
@@ -624,8 +630,7 @@ int template_parse_value(stream* in, state* state, json_value* result, unsigned 
             }
             bool is_true = strcmp("rue", state->ident) == 0;
             if (is_true) {
-                out.ty = JSON_TY_TRUE;
-                *result = state_set_scratch(state, out);
+                result->val.ty = JSON_TY_TRUE;
                 return 0;
             }
             identifier_len = strlen(state->ident);
@@ -641,8 +646,7 @@ int template_parse_value(stream* in, state* state, json_value* result, unsigned 
             }
             bool is_false = strcmp("alse", state->ident) == 0;
             if (is_false) {
-                out.ty = JSON_TY_FALSE;
-                *result = state_set_scratch(state, out);
+                result->val.ty = JSON_TY_FALSE;
                 return 0;
             }
             identifier_len = strlen(state->ident);
@@ -658,8 +662,7 @@ int template_parse_value(stream* in, state* state, json_value* result, unsigned 
             }
             bool is_nil = strcmp("il", state->ident) == 0;
             if (is_nil) {
-                out.ty = JSON_TY_NULL;
-                *result = state_set_scratch(state, out);
+                result->val.ty = JSON_TY_NULL;
                 return 0;
             }
             err = stream_seek(in, -identifier_len - 1);
@@ -668,14 +671,15 @@ int template_parse_value(stream* in, state* state, json_value* result, unsigned 
             }
             return ERR_TEMPLATE_NO_LITERAL;
         case '$':
-            return template_parse_var_value(in, state, result);
+            return template_parse_var_value(in, state, &result->val);
         case '"':
             err = template_parse_regular_str(in, &out.inner.str);
             if (err != 0) {
                 return err;
             }
             out.ty = JSON_TY_STRING;
-            *result = state_set_scratch(state, out);
+            result->val = state_set_scratch(state, out);
+            result->is_scratch = true;
             return 0;
         case '`':
             err = template_parse_backtick_str(in, &out.inner.str);
@@ -683,7 +687,8 @@ int template_parse_value(stream* in, state* state, json_value* result, unsigned 
                 return err;
             }
             out.ty = JSON_TY_STRING;
-            *result = state_set_scratch(state, out);
+            result->val = state_set_scratch(state, out);
+            result->is_scratch = true;
             return 0;
         case '-':
             err = stream_next_utf8_cp(in, cp, &cp_len);
@@ -713,26 +718,19 @@ int template_parse_value(stream* in, state* state, json_value* result, unsigned 
             if (err != 0) {
                 return err;
             }
-            err = template_parse_number(in, &val);
-            if (err != 0) {
-                return err;
-            }
-            out.ty = JSON_TY_NUMBER;
-            out.inner.num = val;
-            *result = state_set_scratch(state, out);
-            return 0;
+            result->val.ty = JSON_TY_NUMBER;
+            return template_parse_number(in, &result->val.inner.num);
         case '.':
-            return template_parse_path_expr(in, state, result);
+            return template_parse_path_expr(in, state, &result->val);
         default:
             return ERR_TEMPLATE_NO_LITERAL;
     }
     return 0;
 }
 
-int template_parse_var_mutation(stream* in, state* state, json_value* result) {
+int template_parse_var_mutation(stream* in, state* state, tracked_value* result) {
     unsigned char cp[4];
     size_t cp_len;
-    *result = JSON_NULL;
     // parse var name
     int err = stream_next_utf8_cp(in, cp, &cp_len);
     if (err != 0) {
@@ -795,27 +793,25 @@ int template_parse_var_mutation(stream* in, state* state, json_value* result) {
     if (cp_len > 1) {
         return ERR_TEMPLATE_INVALID_SYNTAX;
     }
-    json_value out;
     char* ident_copy = strdup(state->ident);
-    err = template_parse_value(in, state, &out, cp[0]);  // returns a pointer to state->scratch_val
+    err = template_parse_value(in, state, result, cp[0]);
     if (err != 0) {
         free(ident_copy);
         return err;
     }
     // nil cannot be assigned in go
-    if (out.ty == JSON_TY_NULL) {
+    if (result->val.ty == JSON_TY_NULL) {
         free(ident_copy);
         return ERR_TEMPLATE_KEYWORD_UNEXPECTED;
     }
     json_value* value_copy = malloc(sizeof(json_value));
     assert(value_copy);
-    json_value_copy(value_copy, &out);
+    json_value_copy(value_copy, &result->val);
     stack_set_var(&state->stack, ident_copy, value_copy);
-    *result = state->scratch_val;
     return 0;
 }
 
-int template_parse_value_with_var_mut(stream* in, state* state, json_value* result, unsigned char first) {
+int template_parse_value_with_var_mut(stream* in, state* state, tracked_value* result, unsigned char first) {
     if (first == '$') {
         long pre_pos;
         int err = stream_pos(in, &pre_pos);
@@ -839,8 +835,7 @@ int template_parse_value_with_var_mut(stream* in, state* state, json_value* resu
     return template_parse_value(in, state, result, first);
 }
 
-int template_parse_arg(stream* in, state* state, json_value* arg) {
-    *arg = JSON_NULL;
+int template_parse_arg(stream* in, state* state, tracked_value* arg) {
     unsigned char cp[4];
     size_t cp_len;
     int err = template_skip_whitespace(in);
@@ -1055,7 +1050,7 @@ int template_if(stream* in, state* state) {
     bool any_branch = false;
     while (true) {
         stack_push_frame(&state->stack);
-        json_value cond;
+        tracked_value cond;
         int err = template_parse_arg(in, state, &cond);
         if (err != 0) {
             stack_pop_frame(&state->stack);
@@ -1066,7 +1061,7 @@ int template_if(stream* in, state* state) {
             stack_pop_frame(&state->stack);
             return err;
         }
-        bool cond_empty = is_empty(&cond);
+        bool cond_empty = is_empty(&cond.val);
         if (cond_empty || any_branch) {
             err = template_noop(in, state);
         } else {
@@ -1125,7 +1120,7 @@ int template_if(stream* in, state* state) {
 }
 
 typedef struct {
-    json_value iterable;
+    tracked_value iterable;
     char* key_name;
     char* value_name;
 } range_params;
@@ -1137,13 +1132,12 @@ void range_params_free(range_params* params) {
 
 // requires fresh stack frame
 int template_parse_range_params(state* state, stream* in, range_params* params) {
-    params->iterable = JSON_NULL;
     params->key_name = NULL;
     params->value_name = NULL;
     // start post range keyword
     int err = template_skip_whitespace(in);
     if (err != 0) {
-        return err;
+        goto cleanup;
     }
     unsigned char cp[4];
     size_t cp_len;
@@ -1232,7 +1226,8 @@ int template_parse_range_params(state* state, stream* in, range_params* params) 
                 err = ERR_TEMPLATE_VAR_UNKNOWN;
                 goto cleanup;
             }
-            params->iterable = *var;
+            params->iterable.is_scratch = false;
+            params->iterable.val = *var;
             err = stream_seek(in, -1);
             goto cleanup;
         default:
@@ -1244,7 +1239,8 @@ cleanup:
         range_params_free(params);
         params->key_name = NULL;
         params->value_name = NULL;
-        params->iterable = JSON_NULL;
+        params->iterable.val = JSON_NULL;
+        params->iterable.is_scratch = false;
     }
     return err;
 }
@@ -1334,11 +1330,11 @@ int template_range(stream* in, state* state) {
     if (err != 0) {
         goto clean_pop1;
     }
-    if (params.iterable.ty != JSON_TY_ARRAY && params.iterable.ty != JSON_TY_OBJECT) {
+    if (params.iterable.val.ty != JSON_TY_ARRAY && params.iterable.val.ty != JSON_TY_OBJECT) {
         err = ERR_TEMPLATE_NO_ITERABLE;
         goto clean_pop1;
     }
-    if (is_empty(&params.iterable)) {
+    if (is_empty(&params.iterable.val)) {
         err = template_end_pipeline(in, state, &nothing);
         if (err != 0) {
             goto clean_pop1;
@@ -1370,7 +1366,7 @@ int template_range(stream* in, state* state) {
     if (err != 0) {
         goto clean_pop1;
     }
-    err = value_iter_new(&iter, &params.iterable);
+    err = value_iter_new(&iter, &params.iterable.val);
     if (err != 0) {
         goto clean_pop1;
     }
@@ -1462,10 +1458,11 @@ int template_with(stream* in, state* state) {
     bool any_branch = false;
     while (true) {
         stack_push_frame(&state->stack);
-        json_value arg;
+        tracked_value arg;
         int err = template_parse_arg(in, state, &arg);
         if (err == ERR_TEMPLATE_KEY_UNKNOWN) {
-            arg = JSON_NULL;
+            arg.val = JSON_NULL;
+            arg.is_scratch = false;
             err = 0;
         }
         if (err != 0) {
@@ -1477,15 +1474,24 @@ int template_with(stream* in, state* state) {
             stack_pop_frame(&state->stack);
             return err;
         }
-        bool arg_empty = is_empty(&arg);
+        bool arg_empty = is_empty(&arg.val);
         if (arg_empty) {
             err = template_noop(in, state);
         } else {
             any_branch = true;
+            json_value next;
+            if (arg.is_scratch) {
+                json_value_copy(&next, &arg.val);
+            } else {
+                next = arg.val;
+            }
             json_value* previous = state->dot;
-            state->dot = &arg;
+            state->dot = &next;
             err = template_plain(in, state);
             state->dot = previous;
+            if (arg.is_scratch) {
+                json_value_free(&next);
+            }
         }
         if (err != 0) {
             stack_pop_frame(&state->stack);
@@ -1647,7 +1653,7 @@ int template_skip_comment(stream* in) {
     assert(0);
 }
 
-int template_dispatch_pipeline(stream* in, state* state, json_value* result) {
+int template_dispatch_pipeline(stream* in, state* state, tracked_value* result) {
     unsigned char cp[4];
     size_t cp_len;
     int err = stream_next_utf8_cp(in, cp, &cp_len);
@@ -1689,7 +1695,8 @@ int template_dispatch_pipeline(stream* in, state* state, json_value* result) {
         err = template_parse_var_mutation(in, state, result);
         if (err != ERR_TEMPLATE_NO_MUTATION) {
             // top level var assignments/definitions have their result discarded
-            *result = JSON_NULL;
+            result->val = JSON_NULL;
+            result->is_scratch = false;
             return err;
         }
         long post_pos;
@@ -1731,7 +1738,7 @@ int template_dispatch_pipeline(stream* in, state* state, json_value* result) {
         if (err != 0) {
             return err;
         }
-        err = template_dispatch_func(in, state, result);
+        err = template_dispatch_func(in, state, &result->val);
         if (err != 0) {
             return err;
         }
@@ -1744,7 +1751,7 @@ int template_dispatch_pipeline(stream* in, state* state, json_value* result) {
 }
 
 int template_invoke_pipeline(stream* in, state* state) {
-    json_value result = JSON_NULL;
+    tracked_value result = {.val =JSON_NULL, .is_scratch = false};
     int err = template_dispatch_pipeline(in, state, &result);
     if (err != 0) {
         return err;
@@ -1752,7 +1759,7 @@ int template_invoke_pipeline(stream* in, state* state) {
     if (state->return_reason != RETURN_REASON_REGULAR) {
         return 0;
     }
-    return template_end_pipeline(in, state, &result);
+    return template_end_pipeline(in, state, &result.val);
 }
 
 int template_start_pipeline(stream* in, state* state) {

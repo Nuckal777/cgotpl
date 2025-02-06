@@ -1,6 +1,5 @@
 #include "template.h"
 
-#include <stdio.h>
 #include <string.h>
 
 #include "test.h"
@@ -9,7 +8,6 @@ nutest_result assert_eval_null(const char* tpl, const char* expected) {
     json_value val = JSON_NULL;
     char* out;
     int err = template_eval(tpl, strlen(tpl), &val, &out);
-    printf("err: %d\n", err);
     NUTEST_ASSERT(err == 0);
     NUTEST_ASSERT(strcmp(expected, out) == 0);
     free(out);
@@ -309,6 +307,10 @@ nutest_result template_with_obj_else_with(void) {
     return assert_eval_data("{{ with .a }} {{.}} {{else with .b}}{{.}}{{ else }}fgh{{ end }}", "{\"a\": [], \"b\": 2724}", "2724");
 }
 
+nutest_result template_with_override_scratch(void) {
+    return assert_eval_null("{{ with `a` }} {{ 1 }} {{ . }} {{ end }}", " 1 a ");
+}
+
 nutest_result template_with_no_arg(void) {
     return assert_eval_err("{{ with }} a {{end}}", ERR_TEMPLATE_NO_LITERAL);
 }
@@ -436,6 +438,7 @@ int main() {
     nutest_register(template_with_obj);
     nutest_register(template_with_obj_else);
     nutest_register(template_with_obj_else_with);
+    nutest_register(template_with_override_scratch);
     nutest_register(template_with_no_arg);
     nutest_register(template_with_double_else);
     nutest_register(template_var_dollar);
