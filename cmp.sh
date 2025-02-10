@@ -38,6 +38,7 @@ testcase () {
     fi
 }
 
+testcase '{{ . }}{{ ' 'null'
 testcase '{{"abc"}}' 'null'
 testcase '{{\n}}' 'null'
 testcase '{{true}}' 'null'

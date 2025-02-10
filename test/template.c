@@ -7,7 +7,7 @@
 nutest_result assert_eval_null(const char* tpl, const char* expected) {
     json_value val = JSON_NULL;
     char* out;
-    int err = template_eval(tpl, strlen(tpl), &val, &out);
+    int err = template_eval_mem(tpl, strlen(tpl), &val, &out);
     NUTEST_ASSERT(err == 0);
     NUTEST_ASSERT(strcmp(expected, out) == 0);
     free(out);
@@ -18,7 +18,7 @@ nutest_result assert_eval_null(const char* tpl, const char* expected) {
 nutest_result assert_eval_err(const char* tpl, int expected) {
     json_value val = JSON_NULL;
     char* out;
-    int err = template_eval(tpl, strlen(tpl), &val, &out);
+    int err = template_eval_mem(tpl, strlen(tpl), &val, &out);
     NUTEST_ASSERT(err == expected);
     free(out);
     return NUTEST_PASS;
@@ -37,7 +37,7 @@ nutest_result assert_eval_data(const char* tpl, const char* data, const char* ex
     int err = make_json_val(&val, data);
     NUTEST_ASSERT(err == 0);
     char* out;
-    err = template_eval(tpl, strlen(tpl), &val, &out);
+    err = template_eval_mem(tpl, strlen(tpl), &val, &out);
     NUTEST_ASSERT(err == 0);
     NUTEST_ASSERT(strcmp(expected, out) == 0);
     free(out);
@@ -50,7 +50,7 @@ nutest_result assert_eval_err_data(const char* tpl, const char* data, int expect
     int err = make_json_val(&val, data);
     NUTEST_ASSERT(err == 0);
     char* out;
-    err = template_eval(tpl, strlen(tpl), &val, &out);
+    err = template_eval_mem(tpl, strlen(tpl), &val, &out);
     NUTEST_ASSERT(err == expected);
     free(out);
     json_value_free(&val);
@@ -63,6 +63,10 @@ nutest_result template_identity(void) {
 
 nutest_result template_empty_pipeline(void) {
     return assert_eval_null(" x{{}} y", " x y");
+}
+
+nutest_result template_incomplete_pipeline(void) {
+    return assert_eval_err("{{ 53 }}{{ ", ERR_TEMPLATE_UNEXPECTED_EOF);
 }
 
 nutest_result template_strip_whitespace_pre(void) {
@@ -375,9 +379,23 @@ nutest_result template_loop_var_map(void) {
     return assert_eval_data("{{ range $key,$val := . -}} {{ $key }}{{ $val }} {{- end }}", "{\"a\": 9, \"b\": 8}", "a9b8");
 }
 
+nutest_result template_loop_null_name(void) {
+    json_value val;
+    int err = make_json_val(&val, "[3, 2, 1]");
+    NUTEST_ASSERT(err == 0);
+    const char tpl[] = "{{ range $abc\0def := . -}} {{ $abc\0def }} {{- end }}";
+    char* out;
+    err = template_eval_mem(tpl, sizeof(tpl), &val, &out);
+    NUTEST_ASSERT(err == ERR_TEMPLATE_INVALID_SYNTAX);
+    free(out);
+    json_value_free(&val);
+    return NUTEST_PASS;
+}
+
 int main() {
     nutest_register(template_identity);
     nutest_register(template_empty_pipeline);
+    nutest_register(template_incomplete_pipeline);
     nutest_register(template_strip_whitespace_pre);
     nutest_register(template_strip_whitespace_post);
     nutest_register(template_strip_whitespace_multi);
@@ -455,5 +473,6 @@ int main() {
     nutest_register(template_loop_var_value);
     nutest_register(template_loop_var_arr);
     nutest_register(template_loop_var_map);
+    nutest_register(template_loop_null_name);
     return nutest_run();
 }

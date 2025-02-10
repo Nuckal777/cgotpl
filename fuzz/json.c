@@ -8,10 +8,13 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     stream_open_memory(&st, data, size);
     json_value val;
     int err = json_parse(&st, &val);
-    if (err != 0) {
+    if (err) {
         return -1;
     }
     json_value_free(&val);
-    stream_close(&st);
+    err = stream_close(&st);
+    if (err) {
+        return -1;
+    }
     return 0;
 }

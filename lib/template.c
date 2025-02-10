@@ -266,8 +266,13 @@ int template_skip_whitespace(stream* in) {
     bool space = true;
     while (space) {
         int err = stream_next_utf8_cp(in, cp, &cp_len);
-        if (err != 0) {
-            return err;
+        switch (err) {
+            case EOF:
+                return ERR_TEMPLATE_UNEXPECTED_EOF;
+            case 0:
+                break;
+            default:
+                return err;
         }
         if (cp_len != 1) {
             break;
@@ -1843,7 +1848,7 @@ int template_plain(stream* in, state* state) {
     }
 }
 
-int template_eval(const char* tpl, size_t n, json_value* dot, char** out) {
+int template_eval_stream(stream* in, json_value* dot, char** out) {
     state state;
     state.dot = dot;
     state.scratch_val = JSON_NULL;
@@ -1852,15 +1857,13 @@ int template_eval(const char* tpl, size_t n, json_value* dot, char** out) {
     stack_new(&state.stack);
     stack_push_frame(&state.stack);
     int err = stack_set_ref(&state.stack, "", dot);
-    if (err != 0) {
+    if (err) {
         stack_pop_frame(&state.stack);
         stack_free(&state.stack);
         return err;
     }
     buf_init(&state.out);
-    stream in;
-    stream_open_memory(&in, tpl, n);
-    err = template_plain(&in, &state);
+    err = template_plain(in, &state);
     stack_pop_frame(&state.stack);
     assert(state.stack.len == 0);
     if (err == EOF && state.stack.len == 0) {
@@ -1870,8 +1873,15 @@ int template_eval(const char* tpl, size_t n, json_value* dot, char** out) {
     *out = state.out.data;
     stack_free(&state.stack);
     json_value_free(&state.scratch_val);
+    return err;
+}
+
+int template_eval_mem(const char* tpl, size_t n, json_value* dot, char** out) {
+    stream in;
+    stream_open_memory(&in, tpl, n);
+    int err = template_eval_stream(&in, dot, out);
     int close_err = stream_close(&in);
-    if (close_err != 0) {
+    if (close_err) {
         free(*out);
         return close_err;
     }

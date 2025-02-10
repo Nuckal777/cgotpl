@@ -20,9 +20,14 @@
 #define ERR_TEMPLATE_NO_MUTATION -912
 #define ERR_TEMPLATE_UNEXPECTED_EOF -913
 
-// tpl is a pointer to a template string from which up to n bytes are read.
-// dot is the inital dot value. out will be filled with the result of templating
+// in is a pointer to a stream, which may be read to the end. dot is
+// the inital dot value. out will be filled with the result of templating
 // and needs to be freed by the caller. Returns 0 on success.
-int template_eval(const char* tpl, size_t n, json_value* dot, char** out);
+int template_eval_stream(stream* in, json_value* dot, char** out);
+
+// tpl is a pointer to a template string from which up to n bytes are read.
+// dot is the inital dot value. out will be filled with the result of
+// templating and needs to be freed by the caller. Returns 0 on success.
+int template_eval_mem(const char* tpl, size_t n, json_value* dot, char** out);
 
 #endif

@@ -9,9 +9,10 @@ C99 [golang-style](https://pkg.go.dev/text/template) template engine
 
 cgotpl comes with a simple CLI.
 ```sh
-cgotpl [TEMPLATE] [DATA]
+cgotpl ([TEMPLATE] | -f [FILENAME]) [DATA]
 ```
 Here `TEMPLATE` refers to a [golang-style](https://pkg.go.dev/text/template) template string and `DATA` to a serialized [JSON](https://www.rfc-editor.org/rfc/rfc8259) string.
+The `-f` flag can be used to read the template from a file.
 For instance:
 ```sh
 cgotpl '{{ range . -}} {{.}} {{- end }}' '["h", "e", "ll", "o"]'
@@ -20,12 +21,17 @@ Will print `hello` on stdout.
 
 ## API
 
-There's a single central function defined in `template.h`:
+There are two central function defined in `template.h`:
 ```c
-// tpl is a pointer to a template string from which up to n bytes are read.
-// dot is the inital dot value. out will be filled with the result of templating
+// in is a pointer to a stream, which may be read to the end. dot is
+// the inital dot value. out will be filled with the result of templating
 // and needs to be freed by the caller. Returns 0 on success.
-int template_eval(const char* tpl, size_t n, json_value* dot, char** out);
+int template_eval_stream(stream* in, json_value* dot, char** out);
+
+// tpl is a pointer to a template string from which up to n bytes are read.
+// dot is the inital dot value. out will be filled with the result of
+// templating and needs to be freed by the caller. Returns 0 on success.
+int template_eval_mem(const char* tpl, size_t n, json_value* dot, char** out);
 ```
 An initalized `json_value` can be obtained from:
 ```c
