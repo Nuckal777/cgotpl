@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <ctype.h>
 #include <errno.h>
+#include <math.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdlib.h>
@@ -1265,8 +1266,31 @@ int compare_str(const void* a, const void* b) {
     return strcmp(*((char**)a), *((char**)b));
 }
 
+#ifdef FUZZING_BUILD_MODE
+    #define RANGE_INT_MAX 64
+#else
+    #define RANGE_INT_MAX SIZE_MAX
+#endif
+
 int value_iter_new(value_iter* iter, json_value* val) {
     switch (val->ty) {
+        case JSON_TY_NUMBER:
+            iter->ty = JSON_TY_NUMBER;
+            iter->count = 0;
+            double num = val->inner.num;
+            if (trunc(num) != num) {
+                return ERR_TEMPLATE_NO_ITERABLE;
+            }
+            if (num > 0.0) {
+                if (num > (double)RANGE_INT_MAX) {
+                    return ERR_TEMPLATE_NO_ITERABLE;
+                }
+                iter->len = num;
+            } else {
+                iter->len = 0;
+            }
+            iter->keys = NULL;
+            return 0;
         case JSON_TY_ARRAY:
             iter->ty = JSON_TY_ARRAY;
             iter->count = 0;
@@ -1303,6 +1327,14 @@ bool value_iter_next(value_iter* iter, value_iter_out* out) {
         return false;
     }
     switch (iter->ty) {
+        case JSON_TY_NUMBER:
+            out->idx = iter->count;
+            out->key.ty = JSON_TY_NUMBER;
+            out->key.inner.num = iter->count;
+            out->val.ty = JSON_TY_NUMBER;
+            out->val.inner.num = iter->count;
+            iter->count++;
+            return true;
         case JSON_TY_ARRAY:
             out->idx = iter->count;
             out->key.ty = JSON_TY_NUMBER;
@@ -1335,9 +1367,19 @@ int template_range(stream* in, state* state) {
     if (err != 0) {
         goto clean_pop1;
     }
-    if (params.iterable.val.ty != JSON_TY_ARRAY && params.iterable.val.ty != JSON_TY_OBJECT) {
-        err = ERR_TEMPLATE_NO_ITERABLE;
-        goto clean_pop1;
+    switch (params.iterable.val.ty) {
+        case JSON_TY_NUMBER:
+            if (params.key_name != NULL) {
+                err = ERR_TEMPLATE_NO_ITERABLE;
+                goto clean_pop1;
+            }
+            break;
+        case JSON_TY_ARRAY:
+        case JSON_TY_OBJECT:
+            break;
+        default:
+            err = ERR_TEMPLATE_NO_ITERABLE;
+            goto clean_pop1;
     }
     if (is_empty(&params.iterable.val)) {
         err = template_end_pipeline(in, state, &nothing);
@@ -1756,7 +1798,7 @@ int template_dispatch_pipeline(stream* in, state* state, tracked_value* result) 
 }
 
 int template_invoke_pipeline(stream* in, state* state) {
-    tracked_value result = {.val =JSON_NULL, .is_scratch = false};
+    tracked_value result = {.val = JSON_NULL, .is_scratch = false};
     int err = template_dispatch_pipeline(in, state, &result);
     if (err != 0) {
         return err;
@@ -1782,7 +1824,7 @@ int template_start_pipeline(stream* in, state* state) {
         if (err != 0) {
             return err;
         }
-        return template_invoke_pipeline(in, state); // just past "{{"
+        return template_invoke_pipeline(in, state);  // just past "{{"
     }
     size_t off = cp_len;
     err = stream_next_utf8_cp(in, cp, &cp_len);
@@ -1797,10 +1839,10 @@ int template_start_pipeline(stream* in, state* state) {
         if (err != 0) {
             return err;
         }
-        return template_invoke_pipeline(in, state); // just past "{{", "-" is guaranteed after
+        return template_invoke_pipeline(in, state);  // just past "{{", "-" is guaranteed after
     }
     state->out.len = state->out_nospace;
-    return template_invoke_pipeline(in, state); // past "{{- "
+    return template_invoke_pipeline(in, state);  // past "{{- "
 }
 
 int template_plain(stream* in, state* state) {

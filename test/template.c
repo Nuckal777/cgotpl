@@ -251,6 +251,22 @@ nutest_result template_path_expr_key_unknown(void) {
     return assert_eval_err_data("{{ .up }}", "{\"left\": \"right\"}", ERR_TEMPLATE_KEY_UNKNOWN);
 }
 
+nutest_result template_range_int_positive(void) {
+    return assert_eval_null("{{ range 5 }}{{.}}{{ end }}", "01234");
+}
+
+nutest_result template_range_int_negative(void) {
+    return assert_eval_null("{{ range -6 }}{{.}}{{ end -}} g", "g");
+}
+
+nutest_result template_range_double_positive(void) {
+    return assert_eval_err("{{ range 5.1 }}{{.}}{{ end }}", ERR_TEMPLATE_NO_ITERABLE);
+}
+
+nutest_result template_range_double_negative(void) {
+    return assert_eval_err("{{ range -1.5 }}{{.}}{{ end }}", ERR_TEMPLATE_NO_ITERABLE);
+}
+
 nutest_result template_range_simple(void) {
     return assert_eval_data("{{ range .list }}{{ . }}{{end}}", "{\"list\": [1,2,3]}", "123");
 }
@@ -441,6 +457,10 @@ int main() {
     nutest_register(template_path_expr_invalid_syntax);
     nutest_register(template_path_expr_no_object);
     nutest_register(template_path_expr_key_unknown);
+    nutest_register(template_range_int_positive);
+    nutest_register(template_range_int_negative);
+    nutest_register(template_range_double_positive);
+    nutest_register(template_range_double_negative);
     nutest_register(template_range_simple);
     nutest_register(template_range_no_arg);
     nutest_register(template_range_nested);
