@@ -65,7 +65,7 @@ cleanup:
     return err;
 }
 
-int main (int argc, char *argv[]) {
+int main(int argc, char* argv[]) {
     args args;
     int err = parse_args(argc, argv, &args);
     if (err) {
@@ -81,7 +81,7 @@ int main (int argc, char *argv[]) {
     stream data;
     json_value dot = JSON_NULL;
     char* out = NULL;
-    
+
     stream_open_memory(&data, args.data, strlen(args.data));
     err = json_parse(&data, &dot);
     if (err) {
