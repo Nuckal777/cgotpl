@@ -644,7 +644,7 @@ int template_parse_value(stream* in, state* state, tracked_value* result, unsign
             if (err != 0) {
                 return err;
             }
-            return ERR_TEMPLATE_NO_LITERAL;
+            return ERR_TEMPLATE_NO_VALUE;
         case 'f':
             err = template_parse_ident(in, state);
             if (err != 0) {
@@ -660,7 +660,7 @@ int template_parse_value(stream* in, state* state, tracked_value* result, unsign
             if (err != 0) {
                 return err;
             }
-            return ERR_TEMPLATE_NO_LITERAL;
+            return ERR_TEMPLATE_NO_VALUE;
         case 'n':
             err = template_parse_ident(in, state);
             if (err != 0) {
@@ -671,11 +671,12 @@ int template_parse_value(stream* in, state* state, tracked_value* result, unsign
                 result->val.ty = JSON_TY_NULL;
                 return 0;
             }
+            identifier_len = strlen(state->ident);
             err = stream_seek(in, -identifier_len - 1);
             if (err != 0) {
                 return err;
             }
-            return ERR_TEMPLATE_NO_LITERAL;
+            return ERR_TEMPLATE_NO_VALUE;
         case '$':
             return template_parse_var_value(in, state, &result->val);
         case '"':
@@ -704,8 +705,15 @@ int template_parse_value(stream* in, state* state, tracked_value* result, unsign
             if (cp_len != 1) {
                 return ERR_TEMPLATE_INVALID_SYNTAX;
             }
+            if (cp[0] == '}') {
+                err = stream_seek(in, -2);
+                if (err != 0) {
+                    return err;
+                }
+                return ERR_TEMPLATE_NO_VALUE;
+            }
             if (!isdigit(cp[0]) && cp[0] != '+') {
-                return ERR_TEMPLATE_LITERAL_DASH;
+                return ERR_TEMPLATE_INVALID_SYNTAX;
             }
             seek_back = -2;
             // delibarate fallthrough
@@ -729,9 +737,13 @@ int template_parse_value(stream* in, state* state, tracked_value* result, unsign
         case '.':
             return template_parse_path_expr(in, state, &result->val);
         default:
-            return ERR_TEMPLATE_NO_LITERAL;
+            err = stream_seek(in, -1);
+            if (err != 0) {
+                return err;
+            }
+            return ERR_TEMPLATE_NO_VALUE;
     }
-    return 0;
+    assert(0);
 }
 
 int template_parse_var_mutation(stream* in, state* state, tracked_value* result) {
@@ -841,6 +853,8 @@ int template_parse_value_with_var_mut(stream* in, state* state, tracked_value* r
     return template_parse_value(in, state, result, first);
 }
 
+int template_dispatch_func(stream* in, state* state, tracked_value* result);
+
 int template_parse_arg(stream* in, state* state, tracked_value* arg) {
     unsigned char cp[4];
     size_t cp_len;
@@ -855,7 +869,16 @@ int template_parse_arg(stream* in, state* state, tracked_value* arg) {
     if (cp_len != 1) {
         return ERR_TEMPLATE_INVALID_SYNTAX;
     }
-    return template_parse_value_with_var_mut(in, state, arg, cp[0]);
+    err = template_parse_value_with_var_mut(in, state, arg, cp[0]);
+    if (err != ERR_TEMPLATE_NO_VALUE) {
+        return err;
+    }
+    if (!isalpha(cp[0])) {
+        // template_parse_arg() is invoked by template_dispatch_func().
+        // The latter stops parsing arguments on ERR_TEMPLATE_NO_VALUE.
+        return ERR_TEMPLATE_NO_VALUE;
+    }
+    return template_dispatch_func(in, state, arg);
 }
 
 int template_end_pipeline(stream* in, state* state, json_value* result) {
@@ -1267,9 +1290,9 @@ int compare_str(const void* a, const void* b) {
 }
 
 #ifdef FUZZING_BUILD_MODE
-    #define RANGE_INT_MAX 64
+#define RANGE_INT_MAX 64
 #else
-    #define RANGE_INT_MAX SIZE_MAX
+#define RANGE_INT_MAX SIZE_MAX
 #endif
 
 int value_iter_new(value_iter* iter, json_value* val) {
@@ -1648,12 +1671,62 @@ int template_dispatch_keyword(stream* in, state* state) {
     return ERR_TEMPLATE_KEYWORD_UNKNOWN;
 }
 
-int template_dispatch_func(stream* in, state* state, json_value* result) {
+#define TEMPLATE_FUNC_ARGS_MAX 16
+
+int template_dispatch_func(stream* in, state* state, tracked_value* result) {
     int err = template_parse_ident(in, state);
     if (err != 0) {
         return err;
     }
-    return ERR_TEMPLATE_FUNC_UNKNOWN;
+    char func_name[STATE_IDENT_CAP];
+    strcpy(func_name, state->ident);
+    tracked_value args[TEMPLATE_FUNC_ARGS_MAX];
+    size_t args_len = 0;
+    while (true) {
+        if (args_len == TEMPLATE_FUNC_ARGS_MAX) {
+            err = ERR_TEMPLATE_BUFFER_OVERFLOW;
+            goto cleanup;
+        }
+        tracked_value arg;
+        err = template_parse_arg(in, state, &arg);
+        if (err == ERR_TEMPLATE_NO_VALUE) {
+            break;
+        }
+        if (err != 0) {
+            goto cleanup;
+        }
+        args[args_len].is_scratch = arg.is_scratch;
+        if (arg.is_scratch) {
+            json_value_copy(&args[args_len].val, &arg.val);
+        } else {
+            args[args_len].val = arg.val;
+        }
+        args_len++;
+    }
+    err = 0;
+
+    if (strcmp(func_name, "not") == 0) {
+        if (args_len != 1) {
+            err = ERR_TEMPLATE_FUNC_INVALID;
+            goto cleanup;
+        }
+        result->is_scratch = false;
+        if (is_empty(&args[0].val)) {
+            result->val.ty = JSON_TY_TRUE;
+        } else {
+            result->val.ty = JSON_TY_FALSE;
+        }
+        goto cleanup;
+    }
+
+    err = ERR_TEMPLATE_FUNC_UNKNOWN;
+cleanup:
+    for (size_t i = 0; i < args_len; i++) {
+        if (args[i].is_scratch) {
+            json_value_free(&args[i].val);
+        }
+    }
+    return err;
 }
 
 int template_skip_comment(stream* in) {
@@ -1757,21 +1830,10 @@ int template_dispatch_pipeline(stream* in, state* state, tracked_value* result) 
         }
     }
     err = template_parse_value(in, state, result, cp[0]);
-    switch (err) {
-        case 0:
-            return 0;
-        case ERR_TEMPLATE_NO_LITERAL:
-            break;
-        case ERR_TEMPLATE_LITERAL_DASH:
-            return stream_seek(in, -2);
-        default:
-            return err;
+    if (err != ERR_TEMPLATE_NO_VALUE) {
+        return err;
     }
     if (isalpha(cp[0])) {
-        err = stream_seek(in, -1);
-        if (err != 0) {
-            return err;
-        }
         err = template_dispatch_keyword(in, state);
         switch (err) {
             case 0:
@@ -1785,15 +1847,9 @@ int template_dispatch_pipeline(stream* in, state* state, tracked_value* result) 
         if (err != 0) {
             return err;
         }
-        err = template_dispatch_func(in, state, &result->val);
-        if (err != 0) {
-            return err;
-        }
+        return template_dispatch_func(in, state, result);
     }
-    // when skip whitespace stops directly at the end
-    if (cp[0] == '}') {
-        return stream_seek(in, -1);
-    }
+    // once here nothing of meaning was parsed
     return ERR_TEMPLATE_INVALID_SYNTAX;
 }
 

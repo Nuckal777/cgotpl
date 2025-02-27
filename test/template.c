@@ -1,5 +1,6 @@
 #include "template.h"
 
+#include <stdio.h>
 #include <string.h>
 
 #include "test.h"
@@ -8,6 +9,7 @@ nutest_result assert_eval_null(const char* tpl, const char* expected) {
     json_value val = JSON_NULL;
     char* out;
     int err = template_eval_mem(tpl, strlen(tpl), &val, &out);
+    printf("%d\n", err);
     NUTEST_ASSERT(err == 0);
     NUTEST_ASSERT(strcmp(expected, out) == 0);
     free(out);
@@ -62,7 +64,7 @@ nutest_result template_identity(void) {
 }
 
 nutest_result template_empty_pipeline(void) {
-    return assert_eval_null(" x{{}} y", " x y");
+    return assert_eval_err(" x{{}} y", ERR_TEMPLATE_INVALID_SYNTAX);
 }
 
 nutest_result template_incomplete_pipeline(void) {
@@ -70,19 +72,19 @@ nutest_result template_incomplete_pipeline(void) {
 }
 
 nutest_result template_strip_whitespace_pre(void) {
-    return assert_eval_null(" r      {{- }}s", " rs");
+    return assert_eval_null(" r      {{- ``}}s", " rs");
 }
 
 nutest_result template_strip_whitespace_post(void) {
-    return assert_eval_null(" k {{ -}}    ", " k ");
+    return assert_eval_null(" k {{`` -}}    ", " k ");
 }
 
 nutest_result template_strip_whitespace_multi(void) {
-    return assert_eval_null("k {{- -}} {{- -}} l", "kl");
+    return assert_eval_null("k {{- `` -}} {{- `` -}} l", "kl");
 }
 
 nutest_result template_strip_whitespace_pipeline(void) {
-    return assert_eval_null("{{ 7 }} {{- }}", "7");
+    return assert_eval_null("{{ 7 }} {{- `` }}", "7");
 }
 
 nutest_result template_strip_pre_no_inner_space(void) {
@@ -166,7 +168,7 @@ nutest_result template_continue(void) {
 }
 
 nutest_result template_if_no_arg(void) {
-    return assert_eval_err("{{ if }}", ERR_TEMPLATE_NO_LITERAL);
+    return assert_eval_err("{{ if }}", ERR_TEMPLATE_NO_VALUE);
 }
 
 nutest_result template_if_no_end(void) {
@@ -272,7 +274,7 @@ nutest_result template_range_simple(void) {
 }
 
 nutest_result template_range_no_arg(void) {
-    return assert_eval_err("{{ range }} . {{ end }}", ERR_TEMPLATE_NO_LITERAL);
+    return assert_eval_err("{{ range }} . {{ end }}", ERR_TEMPLATE_NO_VALUE);
 }
 
 nutest_result template_range_nested(void) {
@@ -332,7 +334,7 @@ nutest_result template_with_override_scratch(void) {
 }
 
 nutest_result template_with_no_arg(void) {
-    return assert_eval_err("{{ with }} a {{end}}", ERR_TEMPLATE_NO_LITERAL);
+    return assert_eval_err("{{ with }} a {{end}}", ERR_TEMPLATE_NO_VALUE);
 }
 
 nutest_result template_with_double_else(void) {
@@ -393,6 +395,30 @@ nutest_result template_loop_var_arr(void) {
 
 nutest_result template_loop_var_map(void) {
     return assert_eval_data("{{ range $key,$val := . -}} {{ $key }}{{ $val }} {{- end }}", "{\"a\": 9, \"b\": 8}", "a9b8");
+}
+
+nutest_result template_func_not_true(void) {
+    return assert_eval_null("{{ not true }}", "false");
+}
+
+nutest_result template_func_not_false(void) {
+    return assert_eval_null("{{ not false }}", "true");
+}
+
+nutest_result template_func_not_no_args(void) {
+    return assert_eval_err("{{ not }}", ERR_TEMPLATE_FUNC_INVALID);
+}
+
+nutest_result template_func_not_many_args(void) {
+    return assert_eval_err("{{ not true false `hi` }}", ERR_TEMPLATE_FUNC_INVALID);
+}
+
+nutest_result template_func_if_arg(void) {
+    return assert_eval_null("{{ if not false -}} yes {{- end }}", "yes");
+}
+
+nutest_result template_func_with_arg(void) {
+    return assert_eval_null("{{ with not false }}{{ . }}{{ end }}", "true");
 }
 
 nutest_result template_loop_null_name(void) {
@@ -494,5 +520,11 @@ int main() {
     nutest_register(template_loop_var_arr);
     nutest_register(template_loop_var_map);
     nutest_register(template_loop_null_name);
+    nutest_register(template_func_not_true);
+    nutest_register(template_func_not_false);
+    nutest_register(template_func_not_no_args);
+    nutest_register(template_func_not_many_args);
+    nutest_register(template_func_if_arg);
+    nutest_register(template_func_with_arg);
     return nutest_run();
 }

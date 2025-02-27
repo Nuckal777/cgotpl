@@ -38,6 +38,11 @@ testcase () {
     fi
 }
 
+testcase '{{}}' 'null'
+testcase '{{ }}' 'null'
+testcase 'a {{- }} b' 'null'
+testcase 'a {{ -}} b' 'null'
+testcase 'a {{- -}} b' 'null'
 testcase '{{ . }}{{ ' 'null'
 testcase '{{"abc"}}' 'null'
 testcase '{{\n}}' 'null'
@@ -112,6 +117,23 @@ testcase '{{ range $idx,$val := . -}} {{$idx}}{{$val}} {{- end }}' '[1,2,3,4,5]'
 testcase '{{ range $val := . -}} {{$val}} {{- end }}' '{"a":"b","c":"d","e":"f"}'
 testcase '{{ range $idx, $val := . -}} {{$idx}}{{$val}} {{- end }}' '{"a":"b","c":"d","e":"f"}'
 testcase '{{ range $idx, $val := 986 }}{{$idx}}{{$val}}{{end}}' 'null'
+testcase '{{ not true }}' 'null'
+testcase '{{ not false }}' 'null'
+testcase '{{ not . }}' 'false'
+testcase '{{ not false true "hello" }}' 'null'
+testcase '{{ not }}' 'null'
+testcase '{{ not "" }}' 'null'
+testcase '{{ not "abc" }}' 'null'
+testcase '{{ not 0 }}' 'null'
+testcase '{{ not 7 }}' 'null'
+testcase '{{ not 0.0 }}' 'null'
+testcase '{{ not 0.3 }}' 'null'
+testcase '{{ not . }}' '[]'
+testcase '{{ not . }}' '[1,2,3]'
+testcase '{{ not . }}' '{}'
+testcase '{{ not . }}' '{"a": 37}'
+testcase '{{ if not . }} x {{ else }} y {{ end }}' 'true'
+testcase '{{ if not . }} x {{ else }} y {{ end }}' 'false'
 
 if [ $FAILS -ne 0 ]; then
     printf "\nencountered %d failures\n" $FAILS
