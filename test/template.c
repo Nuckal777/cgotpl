@@ -421,6 +421,26 @@ nutest_result template_func_with_arg(void) {
     return assert_eval_null("{{ with not false }}{{ . }}{{ end }}", "true");
 }
 
+nutest_result template_parenthesis_val(void) {
+    return assert_eval_null("{{ (45) }}", "45");
+}
+
+nutest_result template_parenthesis_no_val(void) {
+    return assert_eval_err("{{ () }}", ERR_TEMPLATE_NO_VALUE);
+}
+
+nutest_result template_parenthesis_no_close(void) {
+    return assert_eval_err("{{ ( true }}", ERR_TEMPLATE_INVALID_SYNTAX);
+}
+
+nutest_result template_parenthesis_no_open(void) {
+    return assert_eval_err("{{ false ) }}", ERR_TEMPLATE_INVALID_SYNTAX);
+}
+
+nutest_result template_parenthesis_func(void) {
+    return assert_eval_null("{{ not (not ``) }}", "false");
+}
+
 nutest_result template_loop_null_name(void) {
     json_value val;
     int err = make_json_val(&val, "[3, 2, 1]");
@@ -526,5 +546,10 @@ int main() {
     nutest_register(template_func_not_many_args);
     nutest_register(template_func_if_arg);
     nutest_register(template_func_with_arg);
+    nutest_register(template_parenthesis_val);
+    nutest_register(template_parenthesis_no_val);
+    nutest_register(template_parenthesis_no_close);
+    nutest_register(template_parenthesis_no_open);
+    nutest_register(template_parenthesis_func);
     return nutest_run();
 }

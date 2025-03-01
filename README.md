@@ -96,13 +96,33 @@ Currently, basic control-flow and data access is implemented.
 | `{{block "name" pipeline}} T1 {{end}}`        | :x:                                                |
 | `{{with pipeline}} T1 {{end}}`                | :white_check_mark:                                 |
 | Field access `.a.b.c`                         | :white_check_mark:                                 |
-| Variables                                     | :construction: (Functions can't be assigned)       |
+| Variables `$a := 1337`                        | :white_check_mark:                                 |
 | `range` with variable initializer             | :white_check_mark:                                 |
-| Functions (e.g. `printf`, `not`, `and`, ...)  | :x:                                                |
+| Function invocation `{{ func $value }}`       | :white_check_mark:                                 |
+| Pipes `{{ $value \| func }}`                  | :x:                                                |
 
-The c and go standard library may disagree on certain formatting (`printf`) corner-cases.
 cgotpl parses non-executed templates sloppy.
 Syntactical issues in non-executed branches may not lead to an error.
+
+## Functions
+
+| Function | State              |
+| -------- | ------------------ |
+| and      | :x:                |
+| call     | :x:                |
+| html     | :x:                |
+| index    | :x:                |
+| slice    | :x:                |
+| js       | :x:                |
+| len      | :x:                |
+| not      | :white_check_mark: |
+| or       | :x:                |
+| print    | :x:                |
+| printf   | :x:                |
+| println  | :x:                |
+| urlquery | :x:                |
+
+The c and go standard library may disagree on certain formatting (`printf`) corner-cases.
 
 ## Why?
 
