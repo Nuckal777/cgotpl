@@ -1,6 +1,5 @@
 #include "template.h"
 
-#include <stdio.h>
 #include <string.h>
 
 #include "test.h"
@@ -9,7 +8,6 @@ nutest_result assert_eval_null(const char* tpl, const char* expected) {
     json_value val = JSON_NULL;
     char* out;
     int err = template_eval_mem(tpl, strlen(tpl), &val, &out);
-    printf("%d\n", err);
     NUTEST_ASSERT(err == 0);
     NUTEST_ASSERT(strcmp(expected, out) == 0);
     free(out);
@@ -147,8 +145,12 @@ nutest_result template_func_unknown(void) {
     return assert_eval_err("xyz{{ banana }} h", ERR_TEMPLATE_FUNC_UNKNOWN);
 }
 
-nutest_result template_func_literal(void) {
-    return assert_eval_null("{{ true }} {{ false }} {{ nil }}", "true false ");
+nutest_result template_func_literal_bool(void) {
+    return assert_eval_null("{{ true }} {{ false }}", "true false");
+}
+
+nutest_result template_func_literal_nil(void) {
+    return assert_eval_err("{{ nil }}", ERR_TEMPLATE_KEYWORD_UNEXPECTED);
 }
 
 nutest_result template_end(void) {
@@ -441,6 +443,34 @@ nutest_result template_parenthesis_func(void) {
     return assert_eval_null("{{ not (not ``) }}", "false");
 }
 
+nutest_result template_pipe_plain(void) {
+    return assert_eval_null("{{ `a` | not }}", "false");
+}
+
+nutest_result template_pipe_multi(void) {
+    return assert_eval_null("{{ true | not | not | not | not }}", "true");
+}
+
+nutest_result template_pipe_parenthesis(void) {
+    return assert_eval_null("{{ ( false | not ) }}", "true");
+}
+
+nutest_result template_pipe_no_func(void) {
+    return assert_eval_err("{{ 7 | nofunc }}", ERR_TEMPLATE_FUNC_UNKNOWN);
+}
+
+nutest_result template_pipe_invalid_args(void) {
+    return assert_eval_err("{{ 7 | not true }}", ERR_TEMPLATE_FUNC_INVALID);
+}
+
+nutest_result template_pipe_var_def(void) {
+    return assert_eval_null("{{ $a := true | not }}{{ $a }}", "false");
+}
+
+nutest_result template_pipe_piped_var(void) {
+    return assert_eval_null("{{ ($a := true) | not }}{{ $a }}", "falsetrue");
+}
+
 nutest_result template_loop_null_name(void) {
     json_value val;
     int err = make_json_val(&val, "[3, 2, 1]");
@@ -477,7 +507,8 @@ int main() {
     nutest_register(template_print_obj_elems);
     nutest_register(template_print_obj_empty);
     nutest_register(template_func_unknown);
-    nutest_register(template_func_literal);
+    nutest_register(template_func_literal_bool);
+    nutest_register(template_func_literal_nil);
     nutest_register(template_end);
     nutest_register(template_else);
     nutest_register(template_break);
@@ -551,5 +582,12 @@ int main() {
     nutest_register(template_parenthesis_no_close);
     nutest_register(template_parenthesis_no_open);
     nutest_register(template_parenthesis_func);
+    nutest_register(template_pipe_plain);
+    nutest_register(template_pipe_multi);
+    nutest_register(template_pipe_parenthesis);
+    nutest_register(template_pipe_no_func);
+    nutest_register(template_pipe_invalid_args);
+    nutest_register(template_pipe_var_def);
+    nutest_register(template_pipe_piped_var);
     return nutest_run();
 }

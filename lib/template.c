@@ -869,7 +869,46 @@ int template_parse_parenthesis(stream* in, state* state, tracked_value* result) 
     return 0;
 }
 
-int template_dispatch_func(stream* in, state* state, tracked_value* result);
+int template_dispatch_func(stream* in, state* state, json_value* piped, tracked_value* result);
+
+int template_parse_pipe(stream* in, state* state, tracked_value* result) {
+    int err = template_skip_whitespace(in);
+    if (err != 0) {
+        return err;
+    }
+    unsigned char cp[4];
+    size_t cp_len;
+    err = stream_next_utf8_cp(in, cp, &cp_len);
+    if (err != 0) {
+        return err;
+    }
+    if (cp_len != 1) {
+        return ERR_TEMPLATE_INVALID_SYNTAX;
+    }
+    if (cp[0] != '|') {
+        return stream_seek(in, -cp_len);
+    }
+    err = template_skip_whitespace(in);
+    if (err != 0) {
+        return err;
+    }
+    tracked_value last = {.is_scratch = result->is_scratch};
+    if (result->is_scratch) {
+        json_value_copy(&last.val, &result->val);
+    } else {
+        last.val = result->val;
+    }
+    err = template_dispatch_func(in, state, &last.val, result);
+    if (err != 0) {
+        goto cleanup;
+    }
+    err = template_parse_pipe(in, state, result);
+cleanup:
+    if (last.is_scratch) {
+        json_value_free(&last.val);
+    }
+    return err;
+}
 
 int template_parse_expr(stream* in, state* state, tracked_value* result, bool allow_var_mut) {
     unsigned char cp[4];
@@ -886,7 +925,11 @@ int template_parse_expr(stream* in, state* state, tracked_value* result, bool al
         return ERR_TEMPLATE_INVALID_SYNTAX;
     }
     if (cp[0] == '(') {
-        return template_parse_parenthesis(in, state, result);
+        err = template_parse_parenthesis(in, state, result);
+        if (err != 0) {
+            return err;
+        }
+        return template_parse_pipe(in, state, result);
     }
     if (allow_var_mut) {
         err = template_parse_value_with_var_mut(in, state, result, cp[0]);
@@ -894,14 +937,21 @@ int template_parse_expr(stream* in, state* state, tracked_value* result, bool al
         err = template_parse_value(in, state, result, cp[0]);
     }
     if (err != ERR_TEMPLATE_NO_VALUE) {
-        return err;
+        if (err != 0) {
+            return err;
+        }
+        return template_parse_pipe(in, state, result);
     }
     if (!isalpha(cp[0])) {
         // template_parse_expr() is invoked by template_dispatch_func().
         // The latter stops parsing arguments on ERR_TEMPLATE_NO_VALUE.
         return ERR_TEMPLATE_NO_VALUE;
     }
-    return template_dispatch_func(in, state, result);
+    err = template_dispatch_func(in, state, NULL, result);
+    if (err != 0) {
+        return err;
+    }
+    return template_parse_pipe(in, state, result);
 }
 
 int template_parse_arg(stream* in, state* state, tracked_value* arg) {
@@ -1333,7 +1383,7 @@ int compare_str(const void* a, const void* b) {
 }
 
 #ifdef FUZZING_BUILD_MODE
-#define RANGE_INT_MAX 64
+#define RANGE_INT_MAX 16
 #else
 #define RANGE_INT_MAX SIZE_MAX
 #endif
@@ -1716,7 +1766,7 @@ int template_dispatch_keyword(stream* in, state* state) {
 
 #define TEMPLATE_FUNC_ARGS_MAX 16
 
-int template_dispatch_func(stream* in, state* state, tracked_value* result) {
+int template_dispatch_func(stream* in, state* state, json_value* piped, tracked_value* result) {
     int err = template_parse_ident(in, state);
     if (err != 0) {
         return err;
@@ -1747,6 +1797,16 @@ int template_dispatch_func(stream* in, state* state, tracked_value* result) {
         args_len++;
     }
     err = 0;
+
+    if (piped != NULL) {
+        if (args_len >= TEMPLATE_FUNC_ARGS_MAX - 1) {
+            err = ERR_TEMPLATE_BUFFER_OVERFLOW;
+            goto cleanup;
+        }
+        args[args_len].is_scratch = false;
+        args[args_len].val = *piped;
+        args_len++;
+    }
 
     if (strcmp(func_name, "not") == 0) {
         if (args_len != 1) {
@@ -1873,27 +1933,35 @@ int template_dispatch_pipeline(stream* in, state* state, tracked_value* result) 
         }
     }
     if (cp[0] == '(') {
-        return template_parse_parenthesis(in, state, result);
+        err = template_parse_parenthesis(in, state, result);
+        if (err != 0) {
+            return err;
+        }
+        return template_parse_pipe(in, state, result);
     }
     err = template_parse_value(in, state, result, cp[0]);
-    if (err != ERR_TEMPLATE_NO_VALUE) {
-        return err;
+    switch (err) {
+        case 0:
+            // for some reason top-level nil is invalid in go templates
+            if (result->val.ty == JSON_TY_NULL) {
+                return ERR_TEMPLATE_KEYWORD_UNEXPECTED;
+            }
+            return template_parse_pipe(in, state, result);
+        case ERR_TEMPLATE_NO_VALUE:
+            break;
+        default:
+            return err;
     }
     if (isalpha(cp[0])) {
         err = template_dispatch_keyword(in, state);
-        switch (err) {
-            case 0:
-                return 0;
-            case ERR_TEMPLATE_KEYWORD_UNKNOWN:
-                break;
-            default:
-                return err;
+        if (err != ERR_TEMPLATE_KEYWORD_UNKNOWN) {
+            return err;
         }
         err = stream_seek(in, -strlen(state->ident));
         if (err != 0) {
             return err;
         }
-        return template_dispatch_func(in, state, result);
+        return template_dispatch_func(in, state, NULL, result);
     }
     // once here nothing of meaning was parsed
     return ERR_TEMPLATE_INVALID_SYNTAX;

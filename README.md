@@ -76,7 +76,7 @@ For development a `check` (requires a go compiler) and `fuzz` (requires `CC=clan
 
 ## Features
 
-Currently, basic control-flow and data access is implemented.
+Most templating features, besides sub-templates, are implemented.
 
 | Feature                                       | State                                              |
 | --------------------------------------------- | -------------------------------------------------- |
@@ -99,7 +99,7 @@ Currently, basic control-flow and data access is implemented.
 | Variables `$a := 1337`                        | :white_check_mark:                                 |
 | `range` with variable initializer             | :white_check_mark:                                 |
 | Function invocation `{{ func $value }}`       | :white_check_mark:                                 |
-| Pipes `{{ $value \| func }}`                  | :x:                                                |
+| Pipes `{{ $value \| func }}`                  | :white_check_mark:                                 |
 
 cgotpl parses non-executed templates sloppy.
 Syntactical issues in non-executed branches may not lead to an error.
