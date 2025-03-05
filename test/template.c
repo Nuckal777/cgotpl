@@ -251,8 +251,12 @@ nutest_result template_path_expr_no_object(void) {
     return assert_eval_err("{{ .down }}", ERR_TEMPLATE_NO_OBJECT);
 }
 
-nutest_result template_path_expr_key_unknown(void) {
-    return assert_eval_err_data("{{ .up }}", "{\"left\": \"right\"}", ERR_TEMPLATE_KEY_UNKNOWN);
+nutest_result template_path_expr_single_key_unknown(void) {
+    return assert_eval_data("{{ .up }}", "{\"left\": \"right\"}", "<no value>");
+}
+
+nutest_result template_path_expr_multi_key_unknown(void) {
+    return assert_eval_data("{{ .up.down }}", "{\"left\": \"right\"}", "<no value>");
 }
 
 nutest_result template_range_int_positive(void) {
@@ -321,6 +325,10 @@ nutest_result template_range_continue(void) {
 
 nutest_result template_with_obj(void) {
     return assert_eval_data("{{ with .a }} {{.}} {{end}}", "{\"a\": 1227}", " 1227 ");
+}
+
+nutest_result template_with_unknown_key(void) {
+    return assert_eval_data("{{ with .b }} xyz {{ end }}", "{}", "");
 }
 
 nutest_result template_with_obj_else(void) {
@@ -533,7 +541,8 @@ int main() {
     nutest_register(template_path_expr);
     nutest_register(template_path_expr_invalid_syntax);
     nutest_register(template_path_expr_no_object);
-    nutest_register(template_path_expr_key_unknown);
+    nutest_register(template_path_expr_single_key_unknown);
+    nutest_register(template_path_expr_multi_key_unknown);
     nutest_register(template_range_int_positive);
     nutest_register(template_range_int_negative);
     nutest_register(template_range_double_positive);
@@ -551,6 +560,7 @@ int main() {
     nutest_register(template_range_break);
     nutest_register(template_range_continue);
     nutest_register(template_with_obj);
+    nutest_register(template_with_unknown_key);
     nutest_register(template_with_obj_else);
     nutest_register(template_with_obj_else_with);
     nutest_register(template_with_override_scratch);

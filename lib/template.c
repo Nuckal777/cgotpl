@@ -525,6 +525,24 @@ int template_parse_ident(stream* in, state* state) {
     return ERR_TEMPLATE_BUFFER_OVERFLOW;
 }
 
+int template_skip_path_expr(stream* in) {
+    unsigned char cp[4];
+    size_t cp_len;
+    while (true) {
+        int err = stream_next_utf8_cp(in, cp, &cp_len);
+        if (err != 0) {
+            return err;
+        }
+        if (cp_len != 1) {
+            continue;
+        }
+        if (!isalnum(cp[0]) && cp[0] != '.') {
+            break;
+        }
+    }
+    return stream_seek(in, -1);
+}
+
 int template_parse_path_expr_recurse(stream* in, state* state, json_value* result) {
     unsigned char cp[4];
     size_t cp_len;
@@ -552,6 +570,10 @@ int template_parse_path_expr_recurse(stream* in, state* state, json_value* resul
     json_value* next;
     int found = hashmap_get(&state->dot->inner.obj, state->ident, (const void**)&next);
     if (!found) {
+        err = template_skip_path_expr(in);
+        if (err != 0) {
+            return err;
+        }
         return ERR_TEMPLATE_KEY_UNKNOWN;
     }
     json_value* current = state->dot;
@@ -577,6 +599,10 @@ int template_parse_path_expr(stream* in, state* state, json_value* result) {
     json_value* next;
     int found = hashmap_get(&state->dot->inner.obj, state->ident, (const void**)&next);
     if (!found) {
+        err = template_skip_path_expr(in);
+        if (err != 0) {
+            return err;
+        }
         return ERR_TEMPLATE_KEY_UNKNOWN;
     }
     json_value* current = state->dot;
@@ -1947,6 +1973,9 @@ int template_dispatch_pipeline(stream* in, state* state, tracked_value* result) 
                 return ERR_TEMPLATE_KEYWORD_UNEXPECTED;
             }
             return template_parse_pipe(in, state, result);
+        case ERR_TEMPLATE_KEY_UNKNOWN:
+            buf_append(&state->out, "<no value>", 10);
+            return 0;
         case ERR_TEMPLATE_NO_VALUE:
             break;
         default:
