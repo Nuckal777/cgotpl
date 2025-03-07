@@ -6,59 +6,22 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define BUCKET_DEFAULT_CAP 4
-
-void bucket_new(bucket* b) {
-    b->len = 0;
-    b->cap = BUCKET_DEFAULT_CAP;
-    b->data = malloc(sizeof(entry) * b->cap);
-    assert(b->data);
-    return;
-}
-
-void bucket_free(bucket* b) {
-    b->len = 0;
-    b->cap = 0;
-    free(b->data);
-    return;
-}
-
-void bucket_insert(bucket* b, entry e, size_t at) {
-    assert(at >= 0 && at <= b->len);
-    if (b->len == b->cap) {
-        b->cap = b->cap * 3 / 2;
-        b->data = realloc(b->data, sizeof(entry) * b->cap);
-        assert(b->data);
-    }
-    for (size_t next = b->len; next > at; next--) {
-        memcpy(&b->data[next], &b->data[next - 1], sizeof(entry));
-    }
-    b->data[at] = e;
-    b->len++;
-    return;
-}
-
-#define HASHMAP_DEFAULT_LEN 16
+#define HASHMAP_DEFAULT_CAP 24
 
 void hashmap_new(hashmap* map, hashmap_cmp cmp, hashmap_key_len key_len, hash_func hash) {
-    map->len = HASHMAP_DEFAULT_LEN;
-    map->count = 0;
-    map->hash = hash;
-    map->cmp = cmp;
-    map->key_len = key_len;
-    map->data = calloc(map->len, sizeof(bucket));
+    map->len = HASHMAP_DEFAULT_CAP;
+    map->data = calloc(map->len, sizeof(entry));
     assert(map->data);
-    return;
+    map->count = 0;
+    map->cmp = cmp;
+    map->hash = hash;
+    map->key_len = key_len;
 }
 
 void hashmap_free(hashmap* map) {
-    for (size_t i = 0; i < map->len; i++) {
-        bucket_free(&map->data[i]);
-    }
+    free(map->data);
     map->len = 0;
     map->count = 0;
-    free(map->data);
-    return;
 }
 
 uint64_t djb2(const void* data, size_t len) {
@@ -80,68 +43,55 @@ size_t hashmap_hash(const hashmap* map, const void* key) {
     assert(0);
 }
 
-entry hashmap_bucket_add(bucket* buckets, size_t len, entry e, hashmap_cmp cmp, uint64_t hash) {
-    bucket* b = &buckets[hash % len];
-    if (b->data == NULL) {
-        bucket_new(b);
+entry hashmap_insert(hashmap* map, void* key, void* value) {
+    if (map->count * 10 / map->len > 7) {
+        size_t old_len = map->len;
+        entry* old_data = map->data;
+        map->len = map->len * 3 / 2;
+        map->data = calloc(map->len, sizeof(entry));
+        map->count = 0;
+        assert(map->data);
+        for (entry* entry = old_data; entry < old_data + old_len; entry++) {
+            if (entry->exists) {
+                hashmap_insert(map, entry->key, entry->value);
+            }
+        }
+        free(old_data);
     }
-    size_t i;
-    for (i = 0; i < b->len; i++) {
-        int res = cmp(e.key, b->data[i].key);
-        if (res == 0) {
-            entry prev = b->data[i];
-            b->data[i] = e;
+
+    uint64_t hash = hashmap_hash(map, key);
+    size_t start = hash % map->len;
+    for (size_t counter = 0; counter < map->len; counter++) {
+        size_t idx = (start + counter) % map->len;
+        entry* current = map->data + idx;
+        if (!current->exists) {
+            current->exists = true;
+            current->key = key;
+            current->value = value;
+            map->count++;
+            return (entry){.exists = false};
+        }
+        if (map->cmp(key, current->key) == 0) {
+            entry prev = *current;
+            current->value = value;
+            current->key = key;
             return prev;
         }
-        if (res <= 0) {
-            break;
-        }
     }
-    bucket_insert(b, e, i);
-    entry empty = {.key = NULL, .value = NULL};
-    return empty;
+    assert(0);
 }
 
-entry hashmap_insert(hashmap* map, void* key, void* value) {
-    // twice as many elements as buckets => resize
-    if (map->count >= 2 * map->len) {
-        size_t next_len = map->len * 3 / 2;
-        bucket* next_buckets = calloc(next_len, sizeof(bucket));
-        for (size_t i = 0; i < map->len; i++) {
-            bucket* current_bucket = map->data + i;
-            for (size_t j = 0; j < current_bucket->len; j++) {
-                entry e = current_bucket->data[j];
-                size_t hash = hashmap_hash(map, e.key);
-                hashmap_bucket_add(next_buckets, next_len, e, map->cmp, hash);
-            }
-            bucket_free(current_bucket);
-        }
-        free(map->data);
-        map->data = next_buckets;
-        map->len = next_len;
-    }
-
-    uint64_t hash = hashmap_hash(map, key);
-    entry e = {.key = key, .value = value};
-    entry prev = hashmap_bucket_add(map->data, map->len, e, map->cmp, hash);
-    if (!prev.key) {
-        map->count++;
-    }
-    return prev;
-}
-
-// returns 1 if found
-// return 0 if not found
 int hashmap_get(const hashmap* map, const void* key, const void** out) {
     uint64_t hash = hashmap_hash(map, key);
-    bucket* b = &map->data[hash % map->len];
-    if (b->data == NULL) {
-        return 0;
-    }
-    for (size_t i = 0; i < b->len; i++) {
-        const void* current_key = b->data[i].key;
-        if (map->cmp(key, current_key) == 0) {
-            *out = b->data[i].value;
+    size_t start = hash % map->len;
+    for (size_t counter = 0; counter < map->len; counter++) {
+        size_t idx = (start + counter) % map->len;
+        entry* current = map->data + idx;
+        if(!current->exists) {
+            return 0;
+        }
+        if (map->cmp(key, current->key) == 0) {
+            *out = current->value;
             return 1;
         }
     }
@@ -149,10 +99,10 @@ int hashmap_get(const hashmap* map, const void* key, const void** out) {
 }
 
 void hashmap_iter(const hashmap* map, void* userdata, void (*f)(entry*, void*)) {
-    for (size_t i = 0; i < map->len; i++) {
-        bucket* b = &map->data[i];
-        for (size_t j = 0; j < b->len; j++) {
-            f(&b->data[j], userdata);
+    for(entry* current = map->data; current < map->data + map->len; current++) {
+        if (current->exists) {
+            entry entry = {.key = current->key, .value = current->value};
+            f(&entry, userdata);
         }
     }
 }
@@ -161,10 +111,9 @@ void** hashmap_keys(const hashmap* map) {
     void** out = malloc(map->count * sizeof(void*));
     assert(out);
     size_t count = 0;
-    for (size_t i = 0; i < map->len; i++) {
-        bucket* b = &map->data[i];
-        for (size_t j = 0; j < b->len; j++) {
-            out[count] = b->data[j].key;
+    for(entry* current = map->data; current < map->data + map->len; current++) {
+        if (current->exists) {
+            out[count] = current->key;
             count++;
         }
     }

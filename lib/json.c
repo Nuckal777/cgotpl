@@ -459,7 +459,7 @@ int json_parse_object(stream* st, hashmap* obj) {
         }
         entry prev = hashmap_insert(obj, key, val);
         key = NULL;
-        if (prev.key) {
+        if (prev.exists) {
             free(prev.key);
             json_value_free(prev.value);
             free(prev.value);

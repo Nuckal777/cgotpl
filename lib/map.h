@@ -1,9 +1,11 @@
 #ifndef CGOTPL_MAP
 #define CGOTPL_MAP
 
+#include <stdbool.h>
 #include <stddef.h>
 
 typedef struct {
+    bool exists;
     void* key;
     void* value;
 } entry;
@@ -22,7 +24,7 @@ typedef int (*hashmap_cmp)(const void*, const void*);
 typedef size_t (*hashmap_key_len)(const void*);
 
 typedef struct {
-    bucket* data;
+    entry* data;
     size_t len;
     size_t count;
     hash_func hash;
@@ -34,7 +36,7 @@ void hashmap_new(hashmap* map, hashmap_cmp cmp, hashmap_key_len key_len, hash_fu
 void hashmap_free(hashmap* map);
 
 // May return the previous entry stored.
-// If entry.key is NULL there wasn't a previous entry.
+// If entry.exists is false, there wasn't a previous entry.
 entry hashmap_insert(hashmap* map, void* key, void* value);
 int hashmap_get(const hashmap* map, const void* key, const void** out);
 void hashmap_iter(const hashmap* map, void* userdata, void (*f)(entry*, void*));
