@@ -653,7 +653,6 @@ int template_parse_value(stream* in, state* state, tracked_value* result, unsign
     size_t identifier_len = 0;
     json_value out = JSON_NULL;
     result->is_scratch = false;
-    long pre_pos;
     switch (first) {
         case 't':
             err = template_parse_ident(in, state);
@@ -860,12 +859,7 @@ int template_parse_value_with_var_mut(stream* in, state* state, tracked_value* r
         if (err != ERR_TEMPLATE_NO_MUTATION) {
             return err;
         }
-        long post_pos;
-        err = stream_pos(in, &post_pos);
-        if (err != 0) {
-            return err;
-        }
-        err = stream_seek(in, pre_pos - post_pos);
+        err = stream_set_pos(in, pre_pos);
         if (err != 0) {
             return err;
         }
@@ -1585,12 +1579,7 @@ int template_range(stream* in, state* state) {
         if (err != 0) {
             goto clean_pop1;
         }
-        long post_pos;
-        err = stream_pos(in, &post_pos);
-        if (err != 0) {
-            goto clean_pop1;
-        }
-        err = stream_seek(in, pre_pos - post_pos);
+        err = stream_set_pos(in, pre_pos);
         if (err != 0) {
             goto clean_pop1;
         }
@@ -1948,12 +1937,7 @@ int template_dispatch_pipeline(stream* in, state* state, tracked_value* result) 
             result->is_scratch = false;
             return err;
         }
-        long post_pos;
-        err = stream_pos(in, &post_pos);
-        if (err != 0) {
-            return err;
-        }
-        err = stream_seek(in, pre_pos - post_pos);
+        err = stream_set_pos(in, pre_pos);
         if (err != 0) {
             return err;
         }

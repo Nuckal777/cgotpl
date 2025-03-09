@@ -29,6 +29,7 @@ int stream_open_file(stream* stream, const char* filename);
 // Closes stream. Returns 0 on success.
 int stream_close(stream* stream);
 int stream_pos(stream* stream, long* pos);
+int stream_set_pos(stream* stream, long pos);
 int stream_read(stream* stream, unsigned char* out);
 int stream_next_utf8_cp(stream* st, unsigned char* out, size_t* len);
 int stream_seek(stream* stream, size_t relative);

@@ -32,7 +32,6 @@ int stream_close(stream* stream) {
 }
 
 int stream_pos(stream* stream, long* pos) {
-    int result = 0;
     switch (stream->ty) {
         case STREAM_MEMORY:
             *pos = stream->inner.data.pos;
@@ -40,7 +39,28 @@ int stream_pos(stream* stream, long* pos) {
         case STREAM_FILE:
             *pos = ftell(stream->inner.file);
             if (*pos == -1) {
-                result = errno;
+                int result = errno;
+                errno = 0;
+                return result;
+            }
+            return 0;
+    }
+    assert(0);
+}
+
+int stream_set_pos(stream* stream, long pos) {
+    int result = 0;
+    switch (stream->ty) {
+        case STREAM_MEMORY:
+            if (pos > stream->inner.data.len) {
+                return EINVAL;
+            }
+            stream->inner.data.pos = pos;
+            return 0;
+        case STREAM_FILE:
+            result = fseek(stream->inner.file, pos, SEEK_SET);
+            if (result == -1) {
+                int result = errno;
                 errno = 0;
                 return result;
             }
@@ -55,7 +75,7 @@ int stream_read(stream* stream, unsigned char* out) {
     switch (stream->ty) {
         case STREAM_MEMORY:
             buf = &stream->inner.data;
-            if (buf->pos == buf->len) {
+            if (buf->pos >= buf->len) {
                 return EOF;
             }
             *out = buf->data[buf->pos];
@@ -74,18 +94,24 @@ int stream_read(stream* stream, unsigned char* out) {
 
 int stream_seek(stream* stream, size_t relative) {
     buffer* buf = NULL;
-    size_t next;
+    int result = 0;
     switch (stream->ty) {
         case STREAM_MEMORY:
             buf = &stream->inner.data;
-            next = buf->pos + relative;
-            if (next < 0 || next >= buf->len) {
+            size_t next = buf->pos + relative;
+            if (next < 0 || next > buf->len) {
                 return -1;
             }
             buf->pos = next;
             return 0;
         case STREAM_FILE:
-            return fseek(stream->inner.file, relative, SEEK_CUR);
+            result = fseek(stream->inner.file, relative, SEEK_CUR);
+            if (result == -1) {
+                int result = errno;
+                errno = 0;
+                return result;
+            }
+            return 0;
     }
     assert(0);
 }
