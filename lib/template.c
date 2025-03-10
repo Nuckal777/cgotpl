@@ -270,23 +270,34 @@ json_value state_set_scratch(state* state, json_value val) {
 int template_skip_whitespace(stream* in) {
     unsigned char cp[4];
     size_t cp_len;
-    bool space = true;
-    while (space) {
+    while (true) {
         int err = stream_next_utf8_cp(in, cp, &cp_len);
-        switch (err) {
-            case EOF:
-                return ERR_TEMPLATE_UNEXPECTED_EOF;
-            case 0:
-                break;
-            default:
-                return err;
+        if (err == EOF) {
+            return ERR_TEMPLATE_UNEXPECTED_EOF;
         }
-        if (cp_len != 1) {
-            break;
+        if (err != 0) {
+            return err;
         }
-        space = isspace(cp[0]);
+        if (cp_len != 1 || !isspace(cp[0])) {
+            return stream_seek(in, -cp_len);
+        }
     }
-    return stream_seek(in, -cp_len);
+}
+
+// cp needs to hold at least 4 byte
+int template_next_nonspace(stream* in, unsigned char* cp, size_t* cp_len) {
+    while (true) {
+        int err = stream_next_utf8_cp(in, cp, cp_len);
+        if (err == EOF) {
+            return ERR_TEMPLATE_UNEXPECTED_EOF;
+        }
+        if (err != 0) {
+            return err;
+        }
+        if (*cp_len != 1 || !isspace(cp[0])) {
+            return 0;
+        }
+    }
 }
 
 int template_parse_number(stream* in, double* out) {
@@ -625,7 +636,7 @@ int template_parse_var_value(stream* in, state* state, json_value* result) {
     if (err != 0) {
         return err;
     }
-    if (cp_len > 1 || !isspace(cp[0])) { // '$' is already consumed => named '$ABC' var
+    if (cp_len > 1 || !isspace(cp[0])) {  // '$' is already consumed => named '$ABC' var
         err = stream_seek(in, -cp_len);
         if (err != 0) {
             return err;
@@ -634,7 +645,7 @@ int template_parse_var_value(stream* in, state* state, json_value* result) {
         if (err != 0) {
             return err;
         }
-    } else { // '$' var
+    } else {  // '$' var
         state->ident[0] = 0;
     }
     const json_value* out = stack_find_var(&state->stack, state->ident);
@@ -787,7 +798,7 @@ int template_parse_var_mutation(stream* in, state* state, tracked_value* result)
     if (err != 0) {
         return err;
     }
-    if (cp_len > 1 || !isspace(cp[0])) { // '$' is already consumed => named '$ABC' var
+    if (cp_len > 1 || !isspace(cp[0])) {  // '$' is already consumed => named '$ABC' var
         err = stream_seek(in, -cp_len);
         if (err != 0) {
             return err;
@@ -796,15 +807,10 @@ int template_parse_var_mutation(stream* in, state* state, tracked_value* result)
         if (err != 0) {
             return err;
         }
-    } else { // '$' var
+    } else {  // '$' var
         state->ident[0] = 0;
     }
-    err = template_skip_whitespace(in);
-    if (err != 0) {
-        return err;
-    }
-    // check for definition/assignment
-    err = stream_next_utf8_cp(in, cp, &cp_len);
+    err = template_next_nonspace(in, cp, &cp_len);
     if (err != 0) {
         return err;
     }
@@ -882,10 +888,9 @@ int template_parse_parenthesis(stream* in, state* state, tracked_value* result) 
     if (err != 0) {
         return err;
     }
-    err = template_skip_whitespace(in);
     unsigned char cp[4];
     size_t cp_len;
-    err = stream_next_utf8_cp(in, cp, &cp_len);
+    err = template_next_nonspace(in, cp, &cp_len);
     if (err != 0) {
         return err;
     }
@@ -898,13 +903,9 @@ int template_parse_parenthesis(stream* in, state* state, tracked_value* result) 
 int template_dispatch_func(stream* in, state* state, json_value* piped, tracked_value* result);
 
 int template_parse_pipe(stream* in, state* state, tracked_value* result) {
-    int err = template_skip_whitespace(in);
-    if (err != 0) {
-        return err;
-    }
     unsigned char cp[4];
     size_t cp_len;
-    err = stream_next_utf8_cp(in, cp, &cp_len);
+    int err = template_next_nonspace(in, cp, &cp_len);
     if (err != 0) {
         return err;
     }
@@ -939,11 +940,7 @@ cleanup:
 int template_parse_expr(stream* in, state* state, tracked_value* result, bool allow_var_mut) {
     unsigned char cp[4];
     size_t cp_len;
-    int err = template_skip_whitespace(in);
-    if (err != 0) {
-        return err;
-    }
-    err = stream_next_utf8_cp(in, cp, &cp_len);
+    int err = template_next_nonspace(in, cp, &cp_len);
     if (err != 0) {
         return err;
     }
@@ -983,11 +980,7 @@ int template_parse_expr(stream* in, state* state, tracked_value* result, bool al
 int template_parse_arg(stream* in, state* state, tracked_value* arg) {
     unsigned char cp[4];
     size_t cp_len;
-    int err = template_skip_whitespace(in);
-    if (err != 0) {
-        return err;
-    }
-    err = stream_next_utf8_cp(in, cp, &cp_len);
+    int err = template_next_nonspace(in, cp, &cp_len);
     if (err != 0) {
         return err;
     }
@@ -1001,13 +994,9 @@ int template_parse_arg(stream* in, state* state, tracked_value* arg) {
 }
 
 int template_end_pipeline(stream* in, state* state, json_value* result) {
-    int err = template_skip_whitespace(in);
-    if (err != 0) {
-        return err;
-    }
     unsigned char cp[4];
     size_t cp_len;
-    err = stream_next_utf8_cp(in, cp, &cp_len);
+    int err = template_next_nonspace(in, cp, &cp_len);
     if (err != 0) {
         return err;
     }
@@ -1093,11 +1082,7 @@ int template_pipeline_noop(stream* in, state* state, size_t* depth) {
     }
     size_t ident_count = 0;
     while (true) {
-        err = template_skip_whitespace(in);
-        if (err != 0) {
-            return err;
-        }
-        err = stream_next_utf8_cp(in, cp, &cp_len);
+        err = template_next_nonspace(in, cp, &cp_len);
         if (err != 0) {
             return err;
         }
@@ -1295,13 +1280,9 @@ int template_parse_range_params(state* state, stream* in, range_params* params) 
     params->key_name = NULL;
     params->value_name = NULL;
     // start post range keyword
-    int err = template_skip_whitespace(in);
-    if (err != 0) {
-        goto cleanup;
-    }
     unsigned char cp[4];
     size_t cp_len;
-    err = stream_next_utf8_cp(in, cp, &cp_len);
+    int err = template_next_nonspace(in, cp, &cp_len);
     if (err != 0) {
         goto cleanup;
     }
@@ -1322,11 +1303,7 @@ int template_parse_range_params(state* state, stream* in, range_params* params) 
     if (err != 0) {
         goto cleanup;
     }
-    err = template_skip_whitespace(in);
-    if (err != 0) {
-        goto cleanup;
-    }
-    err = stream_next_utf8_cp(in, cp, &cp_len);
+    err = template_next_nonspace(in, cp, &cp_len);
     if (err != 0) {
         goto cleanup;
     }
@@ -1337,11 +1314,7 @@ int template_parse_range_params(state* state, stream* in, range_params* params) 
     const json_value* var;
     switch (cp[0]) {
         case ',':
-            err = template_skip_whitespace(in);
-            if (err != 0) {
-                goto cleanup;
-            }
-            err = stream_next_utf8_cp(in, cp, &cp_len);
+            err = template_next_nonspace(in, cp, &cp_len);
             if (err != 0) {
                 goto cleanup;
             }
@@ -1354,11 +1327,7 @@ int template_parse_range_params(state* state, stream* in, range_params* params) 
             if (err != 0) {
                 goto cleanup;
             }
-            err = template_skip_whitespace(in);
-            if (err != 0) {
-                goto cleanup;
-            }
-            err = stream_next_utf8_cp(in, cp, &cp_len);
+            err = template_next_nonspace(in, cp, &cp_len);
             if (err != 0) {
                 goto cleanup;
             }
@@ -1929,11 +1898,7 @@ int template_dispatch_pipeline(stream* in, state* state, tracked_value* result) 
         return template_skip_comment(in);
     }
     if (isspace(cp[0])) {
-        err = template_skip_whitespace(in);
-        if (err != 0) {
-            return err;
-        }
-        err = stream_next_utf8_cp(in, cp, &cp_len);
+        err = template_next_nonspace(in, cp, &cp_len);
         if (err != 0) {
             return err;
         }
