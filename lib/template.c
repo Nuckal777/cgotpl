@@ -57,9 +57,9 @@ void sprintentry(entry* e, void* userdata);
 int sprintval(buf* b, json_value* val) {
     size_t expected;
     char print_buf[128];
-    const char* str_true = "true";
-    const char* str_false = "false";
-    const char* str_null = "<nil>";
+    const char str_true[] = "true";
+    const char str_false[] = "false";
+    const char str_null[] = "<nil>";
     json_array* arr;
     hashmap* obj;
     switch (val->ty) {
@@ -74,13 +74,13 @@ int sprintval(buf* b, json_value* val) {
             buf_append(b, val->inner.str, strlen(val->inner.str));
             return 0;
         case JSON_TY_TRUE:
-            buf_append(b, str_true, strlen(str_true));
+            buf_append(b, str_true, sizeof(str_true) - 1);
             return 0;
         case JSON_TY_FALSE:
-            buf_append(b, str_false, strlen(str_false));
+            buf_append(b, str_false, sizeof(str_false) - 1);
             return 0;
         case JSON_TY_NULL:
-            buf_append(b, str_null, strlen(str_null));
+            buf_append(b, str_null, sizeof(str_null) - 1);
             return 0;
         case JSON_TY_ARRAY:
             arr = &val->inner.arr;
@@ -170,14 +170,6 @@ void stack_free_entry(entry* entry, void* userdata) {
     free(entry->value);
 }
 
-void stack_free(stack* s) {
-    for (size_t i = 0; i < s->len; i++) {
-        hashmap_iter(&s->frames[i].data, s->frames + i, stack_free_entry);
-        hashmap_free(&s->frames[i].data);
-    }
-    free(s->frames);
-}
-
 void stack_push_frame(stack* s) {
     if (s->len == s->cap) {
         s->cap = s->cap * 3 / 2;
@@ -196,10 +188,17 @@ void stack_pop_frame(stack* s) {
     s->len--;
 }
 
+void stack_free(stack* s) {
+    while (s->len > 0) {
+        stack_pop_frame(s);
+    }
+    free(s->frames);
+}
+
 void stack_set_var(stack* s, char* var, json_value* value) {
     stack_frame* current = &s->frames[s->len - 1];
     entry previous = hashmap_insert(&current->data, (void*)var, value);
-    if (previous.key != NULL) {
+    if (previous.exists) {
         stack_free_entry(&previous, current);
     }
     for (size_t i = 0; i < current->refs_len; i++) {
@@ -218,8 +217,15 @@ int stack_set_ref(stack* s, char* var, json_value* value) {
     if (current->refs_len == STACK_REFS_CAP) {
         return ERR_TEMPLATE_BUFFER_OVERFLOW;
     }
+    for (size_t i = 0; i < current->refs_len; i++) {
+        if (strcmp(var, current->refs[i]) == 0) {
+            // no match is possible, if the key is not already a ref
+            hashmap_insert(&current->data, (void*)var, value);
+            return 0;
+        }
+    }
     entry previous = hashmap_insert(&current->data, (void*)var, value);
-    if (previous.key != NULL) {
+    if (previous.exists) {
         stack_free_entry(&previous, current);
     }
     current->refs[current->refs_len] = var;
@@ -619,7 +625,7 @@ int template_parse_var_value(stream* in, state* state, json_value* result) {
     if (err != 0) {
         return err;
     }
-    if (cp_len > 1 || !isspace(cp[0])) {
+    if (cp_len > 1 || !isspace(cp[0])) { // '$' is already consumed => named '$ABC' var
         err = stream_seek(in, -cp_len);
         if (err != 0) {
             return err;
@@ -628,7 +634,7 @@ int template_parse_var_value(stream* in, state* state, json_value* result) {
         if (err != 0) {
             return err;
         }
-    } else {
+    } else { // '$' var
         state->ident[0] = 0;
     }
     const json_value* out = stack_find_var(&state->stack, state->ident);
@@ -644,6 +650,7 @@ typedef struct {
     bool is_scratch;
 } tracked_value;
 
+// seeks back in-front of first when returning ERR_TEMPLATE_NO_VALUE
 int template_parse_value(stream* in, state* state, tracked_value* result, unsigned char first) {
     unsigned char cp[4];
     size_t cp_len;
@@ -737,11 +744,11 @@ int template_parse_value(stream* in, state* state, tracked_value* result, unsign
                 }
                 return ERR_TEMPLATE_NO_VALUE;
             }
-            if (!isdigit(cp[0]) && cp[0] != '+') {
+            if (!isdigit(cp[0])) {
                 return ERR_TEMPLATE_INVALID_SYNTAX;
             }
             seek_back = -2;
-            // delibarate fallthrough
+            // deliberate fallthrough
         case '+':
         case '0':
         case '1':
@@ -768,7 +775,6 @@ int template_parse_value(stream* in, state* state, tracked_value* result, unsign
             }
             return ERR_TEMPLATE_NO_VALUE;
     }
-    assert(0);
 }
 
 int template_parse_expr(stream* in, state* state, tracked_value* result, bool allow_var_mut);
@@ -781,7 +787,7 @@ int template_parse_var_mutation(stream* in, state* state, tracked_value* result)
     if (err != 0) {
         return err;
     }
-    if (cp_len > 1 || !isspace(cp[0])) {
+    if (cp_len > 1 || !isspace(cp[0])) { // '$' is already consumed => named '$ABC' var
         err = stream_seek(in, -cp_len);
         if (err != 0) {
             return err;
@@ -790,7 +796,7 @@ int template_parse_var_mutation(stream* in, state* state, tracked_value* result)
         if (err != 0) {
             return err;
         }
-    } else {
+    } else { // '$' var
         state->ident[0] = 0;
     }
     err = template_skip_whitespace(in);
@@ -956,11 +962,11 @@ int template_parse_expr(stream* in, state* state, tracked_value* result, bool al
     } else {
         err = template_parse_value(in, state, result, cp[0]);
     }
-    if (err != ERR_TEMPLATE_NO_VALUE) {
-        if (err != 0) {
-            return err;
-        }
+    if (err == 0) {
         return template_parse_pipe(in, state, result);
+    }
+    if (err != ERR_TEMPLATE_NO_VALUE) {
+        return err;
     }
     if (!isalpha(cp[0])) {
         // template_parse_expr() is invoked by template_dispatch_func().
@@ -995,42 +1001,54 @@ int template_parse_arg(stream* in, state* state, tracked_value* arg) {
 }
 
 int template_end_pipeline(stream* in, state* state, json_value* result) {
+    int err = template_skip_whitespace(in);
+    if (err != 0) {
+        return err;
+    }
     unsigned char cp[4];
     size_t cp_len;
-    bool has_minus = false;
-    while (true) {
-        int err = stream_next_utf8_cp(in, cp, &cp_len);
-        if (err != 0) {
-            return err;
-        }
-        if (cp_len != 1) {
-            return ERR_TEMPLATE_INVALID_SYNTAX;
-        }
-        if (isspace(cp[0]) && !has_minus) {
-            continue;
-        }
-        switch (cp[0]) {
-            case '-':
-                has_minus = true;
-                continue;
-            case '}':
-                err = stream_next_utf8_cp(in, cp, &cp_len);
+    err = stream_next_utf8_cp(in, cp, &cp_len);
+    if (err != 0) {
+        return err;
+    }
+    if (cp_len != 1) {
+        return ERR_TEMPLATE_INVALID_SYNTAX;
+    }
+    bool trim = false;
+    switch (cp[0]) {
+        case '-':
+            err = stream_next_utf8_cp(in, cp, &cp_len);
+            if (err != 0) {
+                return err;
+            }
+            if (cp_len != 1 || cp[0] != '}') {
+                return ERR_TEMPLATE_INVALID_SYNTAX;
+            }
+            trim = true;
+            // deliberate fallthrough
+        case '}':
+            err = stream_next_utf8_cp(in, cp, &cp_len);
+            if (err != 0) {
+                return err;
+            }
+            if (cp_len != 1 || cp[0] != '}') {
+                return ERR_TEMPLATE_INVALID_SYNTAX;
+            }
+            if (trim) {
+                err = template_skip_whitespace(in);
+                if (err == ERR_TEMPLATE_UNEXPECTED_EOF) {
+                    return 0;
+                }
                 if (err != 0) {
                     return err;
                 }
-                if (cp[0] != '}') {
-                    continue;
-                }
-                if (has_minus) {
-                    template_skip_whitespace(in);
-                }
-                if (result->ty == JSON_TY_NULL) {
-                    return 0;
-                }
-                return sprintval(&state->out, result);
-            default:
-                return ERR_TEMPLATE_INVALID_SYNTAX;
-        }
+            }
+            if (result->ty == JSON_TY_NULL) {
+                return 0;
+            }
+            return sprintval(&state->out, result);
+        default:
+            return ERR_TEMPLATE_INVALID_SYNTAX;
     }
 }
 
@@ -1111,7 +1129,7 @@ int template_pipeline_noop(stream* in, state* state, size_t* depth) {
                 if (cp_len != 1 || cp[0] != '}') {
                     return ERR_TEMPLATE_INVALID_SYNTAX;
                 }
-                // delibarate fallthrough
+                // deliberate fallthrough
             case '}':
                 err = stream_next_utf8_cp(in, cp, &cp_len);
                 if (err != 0) {
@@ -1242,13 +1260,13 @@ int template_if(stream* in, state* state) {
     if (err != 0) {
         return err;
     }
-    stack_push_frame(&state->stack);
     if (any_branch) {
         err = template_noop(in, state);
     } else {
+        stack_push_frame(&state->stack);
         err = template_plain(in, state);
+        stack_pop_frame(&state->stack);
     }
-    stack_pop_frame(&state->stack);
     if (err != 0) {
         return err;
     }
@@ -1703,13 +1721,13 @@ int template_with(stream* in, state* state) {
     if (err != 0) {
         return err;
     }
-    stack_push_frame(&state->stack);
     if (any_branch) {
         err = template_noop(in, state);
     } else {
+        stack_push_frame(&state->stack);
         err = template_plain(in, state);
+        stack_pop_frame(&state->stack);
     }
-    stack_pop_frame(&state->stack);
     if (err != 0) {
         return err;
     }
@@ -1888,7 +1906,6 @@ int template_skip_comment(stream* in) {
                 return ERR_TEMPLATE_INVALID_SYNTAX;
         }
     }
-    assert(0);
 }
 
 int template_dispatch_pipeline(stream* in, state* state, tracked_value* result) {
@@ -1950,6 +1967,7 @@ int template_dispatch_pipeline(stream* in, state* state, tracked_value* result) 
         return template_parse_pipe(in, state, result);
     }
     err = template_parse_value(in, state, result, cp[0]);
+    const char no_value[] = "<no value>";
     switch (err) {
         case 0:
             // for some reason top-level nil is invalid in go templates
@@ -1958,7 +1976,7 @@ int template_dispatch_pipeline(stream* in, state* state, tracked_value* result) 
             }
             return template_parse_pipe(in, state, result);
         case ERR_TEMPLATE_KEY_UNKNOWN:
-            buf_append(&state->out, "<no value>", 10);
+            buf_append(&state->out, no_value, sizeof(no_value) - 1);
             return 0;
         case ERR_TEMPLATE_NO_VALUE:
             break;
