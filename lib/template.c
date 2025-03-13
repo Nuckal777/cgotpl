@@ -303,10 +303,6 @@ int template_next_nonspace(stream* in, unsigned char* cp, size_t* cp_len) {
 int template_parse_number(stream* in, double* out) {
     unsigned char cp[4];
     size_t cp_len;
-    int frac_allowed = true;
-    int sign_allowed = true;
-    int is_hex = false;
-    int has_content = false;
     char buf[128];
     size_t buf_idx = 0;
     while (buf_idx < sizeof(buf)) {
@@ -317,87 +313,22 @@ int template_parse_number(stream* in, double* out) {
         if (cp_len != 1) {
             return ERR_TEMPLATE_INVALID_SYNTAX;
         }
-        switch (cp[0]) {
-            case '+':
-            case '-':
-                if (!sign_allowed) {
-                    return ERR_TEMPLATE_INVALID_SYNTAX;
-                }
-                sign_allowed = false;
-                break;
-            case '.':
-                if (!frac_allowed) {
-                    return ERR_TEMPLATE_INVALID_SYNTAX;
-                }
-                frac_allowed = false;
-                break;
-            case '0':
-            case '1':
-            case '2':
-            case '3':
-            case '4':
-            case '5':
-            case '6':
-            case '7':
-            case '8':
-            case '9':
-                sign_allowed = false;
-                has_content = true;
-                break;
-            case 'a':
-            case 'A':
-            case 'b':
-            case 'B':
-            case 'c':
-            case 'C':
-            case 'd':
-            case 'D':
-            case 'f':
-            case 'F':
-                if (!is_hex) {
-                    return ERR_TEMPLATE_INVALID_SYNTAX;
-                }
-                has_content = true;
-                sign_allowed = false;
-                break;
-            case 'e':
-            case 'E':
-                if (is_hex) {
-                    sign_allowed = false;
-                } else {
-                    if (!frac_allowed) {
-                        return ERR_TEMPLATE_INVALID_SYNTAX;
-                    }
-                    sign_allowed = true;
-                    frac_allowed = false;
-                }
-                break;
-            case 'x':
-            case 'X':
-                if (buf_idx != 1 || buf[0] != '0') {
-                    return ERR_TEMPLATE_INVALID_SYNTAX;
-                }
-                is_hex = true;
-                break;
-            case 'p':
-            case 'P':
-                if (!is_hex || !frac_allowed) {
-                    return ERR_TEMPLATE_INVALID_SYNTAX;
-                }
-                sign_allowed = true;
-                frac_allowed = false;
-                break;
-            default:
-                if (!has_content) {
-                    return ERR_TEMPLATE_INVALID_SYNTAX;
-                }
-                buf[buf_idx] = 0;
-                *out = strtod(buf, NULL);
-                if (errno == ERANGE) {
-                    errno = 0;
-                    return ERR_TEMPLATE_INVALID_SYNTAX;
-                }
-                return stream_seek(in, -1);
+        if (!isalnum(cp[0]) && cp[0] != '+' && cp[0] != '-' && cp[0] != '.') {
+            buf[buf_idx] = 0;
+            char* end;
+            *out = strtod(buf, &end);
+            if (errno == ERANGE) {
+                errno = 0;
+                return ERR_TEMPLATE_INVALID_SYNTAX;
+            }
+            if (buf == end) {
+                return ERR_TEMPLATE_INVALID_SYNTAX;
+            }
+            if (*out == -0) {
+                *out = 0;
+            }
+            ptrdiff_t num_len = end - buf;
+            return stream_seek(in, num_len - buf_idx - 1);
         }
         buf[buf_idx] = cp[0];
         buf_idx++;
