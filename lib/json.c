@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <errno.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -204,120 +205,76 @@ cleanup:
     return err;
 }
 
+bool json_is_terminal(char c) {
+    return c == ',' || c == '}' || c == ']' || c == 0x20 || c == 0x09 || c == 0x0a || c == 0x0d;
+}
+
 #define JSON_NO_LAST_CHAR 0
 
-int json_parse_number(stream* st, char first, double* out, char* last) {
+int json_parse_pos_number(stream* st, char first, double* out, char* last) {
     unsigned char cp[4];
     size_t cp_len;
-    int zero_allowed = true;
-    if (first == '0' || first == '-') {
-        zero_allowed = false;
-    }
-    int frac_allowed = true;
-    int has_content = first >= '0' && first <= '9';
-    bool leading_zero = first == '0';
     char buf[128];
     buf[0] = first;
     size_t buf_idx = 1;
-    while (buf_idx < sizeof(buf)) {
+    if (first == '0') {
+        *out = 0;
         int err = stream_next_utf8_cp(st, cp, &cp_len);
         if (err == EOF) {
-            if (!has_content) {
-                return ERR_JSON_INVALID_SYNTAX;
-            }
-            buf[buf_idx] = 0;
-            *out = strtod(buf, NULL);
-            if (errno == ERANGE) {
-                errno = 0;
-                return ERR_JSON_INVALID_SYNTAX;
-            }
             *last = JSON_NO_LAST_CHAR;
             return 0;
         }
         if (err != 0) {
             return err;
         }
-        switch (cp[0]) {
-            case '0':
-                if (!zero_allowed && (buf_idx != 1 || first != '-')) {
-                    return ERR_JSON_INVALID_SYNTAX;
-                }
-                if (buf_idx == 1 && first == '-') {
-                    leading_zero = true;
-                }
-                has_content = true;
-                buf[buf_idx] = cp[0];
-                buf_idx++;
-                break;
-            case '1':
-            case '2':
-            case '3':
-            case '4':
-            case '5':
-            case '6':
-            case '7':
-            case '8':
-            case '9':
-                if (leading_zero) {
-                    return ERR_JSON_INVALID_SYNTAX;
-                }
-                zero_allowed = true;
-                has_content = true;
-                buf[buf_idx] = cp[0];
-                buf_idx++;
-                break;
-            case 'e':
-            case 'E':
-                frac_allowed = false;
-                zero_allowed = false;
-                leading_zero = false;
-                buf[buf_idx] = cp[0];
-                buf_idx++;
-                if (buf_idx == sizeof(buf)) {
-                    return ERR_JSON_BUFFER_OVERFLOW;
-                }
-                err = stream_next_utf8_cp(st, cp, &cp_len);
-                if (err != 0) {
-                    return err;
-                }
-                if (cp[0] != '+' && cp[0] != '-') {
-                    return ERR_JSON_INVALID_SYNTAX;
-                }
-                buf[buf_idx] = cp[0];
-                buf_idx++;
-                break;
-            case '.':
-                if (!frac_allowed) {
-                    return ERR_JSON_INVALID_SYNTAX;
-                }
-                leading_zero = false;
-                frac_allowed = false;
-                buf[buf_idx] = cp[0];
-                buf_idx++;
-                break;
-            case ',':
-            case '}':
-            case ']':
-            case 0x20:
-            case 0x09:
-            case 0x0a:
-            case 0x0d:
-                if (!has_content) {
-                    return ERR_JSON_INVALID_SYNTAX;
-                }
-                buf[buf_idx] = 0;
-                *out = strtod(buf, NULL);
-                if (errno == ERANGE) {
-                    errno = 0;
-                    return ERR_JSON_INVALID_SYNTAX;
-                }
-                *last = cp[0];
-                return 0;
-            default:
-                return ERR_JSON_INVALID_SYNTAX;
+        if (cp_len != 1) {
+            return ERR_JSON_INVALID_SYNTAX;
         }
+        if (json_is_terminal(cp[0])) {
+            *last = cp[0];
+            return 0;
+        }
+        if (cp[0] != '.') {
+            return ERR_JSON_INVALID_SYNTAX;
+        }
+        buf[buf_idx] = cp[0];
+        buf_idx++;
+    }
+    while (buf_idx < sizeof(buf)) {
+        int err = stream_next_utf8_cp(st, cp, &cp_len);
+        if (err == EOF) {
+            cp[0] = JSON_NO_LAST_CHAR;
+            goto finish;
+        }
+        if (err != 0) {
+            return err;
+        }
+        if (cp_len != 1) {
+            return ERR_JSON_INVALID_SYNTAX;
+        }
+        if (json_is_terminal(cp[0])) {
+            goto finish;
+        }
+        if (!(cp[0] >= '0' && cp[0] <= '9') && cp[0] != 'e' && cp[0] != 'E' && cp[0] != '.') {
+            return ERR_JSON_INVALID_SYNTAX;
+        }
+        buf[buf_idx] = cp[0];
+        buf_idx++;
     }
     return ERR_JSON_BUFFER_OVERFLOW;
+finish:
+    buf[buf_idx] = 0;
+    char* end;
+    *out = strtod(buf, &end);
+    if (errno == ERANGE) {
+        errno = 0;
+        return ERR_JSON_INVALID_SYNTAX;
+    }
+    if (buf_idx != end - buf) {
+        return ERR_JSON_INVALID_SYNTAX;
+    }
+    *last = cp[0];
+    return 0;
 }
 
 // out needs to be at least 4 bytes long
@@ -526,9 +483,23 @@ int json_parse_value(stream* st, json_value* val, char* last_char) {
         case '7':
         case '8':
         case '9':
+            val->ty = JSON_TY_NUMBER;
+            return json_parse_pos_number(st, cp[0], &val->inner.num, last_char);
         case '-':
             val->ty = JSON_TY_NUMBER;
-            return json_parse_number(st, cp[0], &val->inner.num, last_char);
+            err = stream_next_utf8_cp(st, cp, &cp_len);
+            if (err != 0) {
+                return err;
+            }
+            if (cp_len != 1) {
+                return ERR_JSON_INVALID_SYNTAX;
+            }
+            err = json_parse_pos_number(st, cp[0], &val->inner.num, last_char);
+            if (err != 0) {
+                return err;
+            }
+            val->inner.num *= -1;
+            return 0;
         case '[':
             val->ty = JSON_TY_ARRAY;
             return json_parse_array(st, &val->inner.arr);

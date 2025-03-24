@@ -103,6 +103,14 @@ nutest_result json_parse_number_zero(void) {
     return json_parse_number_generic("0", 0);
 }
 
+nutest_result json_parse_number_negative_zero(void) {
+    return json_parse_number_generic("-0", -0);
+}
+
+nutest_result json_parse_number_e(void) {
+    return json_parse_number_generic("1e2", 100);
+}
+
 nutest_result json_parse_number_fail(const char* in) {
     stream st;
     stream_open_memory(&st, in, strlen(in));
@@ -126,6 +134,18 @@ nutest_result json_parse_number_plus(void) {
 
 nutest_result json_parse_number_minus(void) {
     return json_parse_number_fail("-");
+}
+
+nutest_result json_parse_number_hex(void) {
+    return json_parse_number_fail("0xa2");
+}
+
+nutest_result json_parse_number_double_dot(void) {
+    return json_parse_number_fail("123.456.789");
+}
+
+nutest_result json_parse_number_double_e(void) {
+    return json_parse_number_fail("123e5e2");
 }
 
 nutest_result json_parse_array_empty(void) {
@@ -302,10 +322,15 @@ int main() {
     nutest_register(json_parse_number_negative);
     nutest_register(json_parse_number_negative_frac);
     nutest_register(json_parse_number_zero);
+    nutest_register(json_parse_number_negative_zero);
+    nutest_register(json_parse_number_e);
     nutest_register(json_parse_number_leading_zero);
     nutest_register(json_parse_number_negative_leading_zero);
     nutest_register(json_parse_number_plus);
     nutest_register(json_parse_number_minus);
+    nutest_register(json_parse_number_hex);
+    nutest_register(json_parse_number_double_dot);
+    nutest_register(json_parse_number_double_e);
     nutest_register(json_parse_array_empty);
     nutest_register(json_parse_array_numbers);
     nutest_register(json_parse_array_nested);
