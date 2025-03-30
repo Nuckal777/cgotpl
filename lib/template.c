@@ -954,6 +954,12 @@ int template_end_pipeline(stream* in, state* state, json_value* result) {
             if (cp_len != 1 || cp[0] != '}') {
                 return ERR_TEMPLATE_INVALID_SYNTAX;
             }
+            if (result->ty != JSON_TY_NULL) {
+                err = sprintval(&state->out, result);
+                if (err != 0) {
+                    return err;
+                }
+            }
             if (trim) {
                 err = template_skip_whitespace(in);
                 if (err == ERR_TEMPLATE_UNEXPECTED_EOF) {
@@ -963,10 +969,7 @@ int template_end_pipeline(stream* in, state* state, json_value* result) {
                     return err;
                 }
             }
-            if (result->ty == JSON_TY_NULL) {
-                return 0;
-            }
-            return sprintval(&state->out, result);
+            return 0;
         default:
             return ERR_TEMPLATE_INVALID_SYNTAX;
     }
@@ -1699,6 +1702,116 @@ int template_dispatch_keyword(stream* in, state* state) {
 
 #define TEMPLATE_FUNC_ARGS_MAX 16
 
+int template_skip_expr(stream* in, long* start_pos) {
+    unsigned char cp[4];
+    size_t cp_len;
+    int err = template_next_nonspace(in, cp, &cp_len);
+    if (err != 0) {
+        return err;
+    }
+    err = stream_pos(in, start_pos);
+    if (err != 0) {
+        return err;
+    }
+    (*start_pos) -= cp_len;
+    size_t depth = 0;
+    bool opening_paren = false;
+    if (cp_len == 1) {
+        if (cp[0] == ')' || cp[0] == '}' || cp[0] == '|') {
+            return ERR_TEMPLATE_NO_VALUE;
+        }
+        if (cp[0] == '"') {
+            char* str;
+            err = template_parse_regular_str(in, &str);
+            if (err != 0) {
+                return err;
+            }
+            free(str);
+            return 0;
+        }
+        if (cp[0] == '`') {
+            char* str;
+            err = template_parse_backtick_str(in, &str);
+            if (err != 0) {
+                return err;
+            }
+            free(str);
+            return 0;
+        }
+        if (cp[0] == '(') {
+            opening_paren = true;
+            depth++;
+        }
+    }
+    while (true) {
+        int err = stream_next_utf8_cp(in, cp, &cp_len);
+        if (err != 0) {
+            return err;
+        }
+        if (cp_len != 1) {
+            continue;
+        }
+        if (depth == 0 && isspace(cp[0])) {
+            return 0;
+        }
+        if (depth == 0 && cp[0] == '|') {
+            return ERR_TEMPLATE_NO_VALUE;
+        }
+        if (cp[0] == '}') {
+            return ERR_TEMPLATE_NO_VALUE;
+        }
+        if (cp[0] == '"') {
+            if (depth == 0) {
+                return ERR_TEMPLATE_INVALID_SYNTAX;
+            }
+            char* str;
+            err = template_parse_regular_str(in, &str);
+            if (err != 0) {
+                return err;
+            }
+            free(str);
+            continue;
+        }
+        if (cp[0] == '`') {
+            if (depth == 0) {
+                return ERR_TEMPLATE_INVALID_SYNTAX;
+            }
+            char* str;
+            err = template_parse_backtick_str(in, &str);
+            if (err != 0) {
+                return err;
+            }
+            free(str);
+            continue;
+        }
+        if (cp[0] == '(') {
+            depth++;
+            continue;
+        }
+        if (cp[0] == ')') {
+            if (opening_paren) {
+                if (depth == 1) {
+                    return 0;
+                };
+            } else {
+                if (depth == 0) {
+                    return stream_seek(in, -cp_len);
+                }
+            }
+            depth--;
+            continue;
+        }
+    }
+}
+
+int template_eval_arg(stream* in, state* state, long where, tracked_value* result) {
+    int err = stream_set_pos(in, where);
+    if (err != 0) {
+        return err;
+    }
+    return template_parse_expr(in, state, result, true);
+}
+
 int template_dispatch_func(stream* in, state* state, json_value* piped, tracked_value* result) {
     int err = template_parse_ident(in, state);
     if (err != 0) {
@@ -1706,63 +1819,50 @@ int template_dispatch_func(stream* in, state* state, json_value* piped, tracked_
     }
     char func_name[STATE_IDENT_CAP];
     strcpy(func_name, state->ident);
-    tracked_value args[TEMPLATE_FUNC_ARGS_MAX];
+    long args[TEMPLATE_FUNC_ARGS_MAX];
     size_t args_len = 0;
+    long pre_end;
     while (true) {
         if (args_len == TEMPLATE_FUNC_ARGS_MAX) {
             err = ERR_TEMPLATE_BUFFER_OVERFLOW;
-            goto cleanup;
+            return err;
         }
-        tracked_value arg;
-        err = template_parse_arg(in, state, &arg);
+        err = template_skip_expr(in, args + args_len);
         if (err == ERR_TEMPLATE_NO_VALUE) {
+            pre_end = args[args_len];
             break;
         }
         if (err != 0) {
-            goto cleanup;
-        }
-        args[args_len].is_scratch = arg.is_scratch;
-        if (arg.is_scratch) {
-            json_value_copy(&args[args_len].val, &arg.val);
-        } else {
-            args[args_len].val = arg.val;
+            return err;
         }
         args_len++;
     }
     err = 0;
 
-    if (piped != NULL) {
-        if (args_len >= TEMPLATE_FUNC_ARGS_MAX - 1) {
-            err = ERR_TEMPLATE_BUFFER_OVERFLOW;
-            goto cleanup;
-        }
-        args[args_len].is_scratch = false;
-        args[args_len].val = *piped;
-        args_len++;
-    }
-
     if (strcmp(func_name, "not") == 0) {
-        if (args_len != 1) {
-            err = ERR_TEMPLATE_FUNC_INVALID;
-            goto cleanup;
+        tracked_value val;
+        val.val = JSON_NULL;
+        if (args_len == 1 && piped == NULL) {
+            err = template_eval_arg(in, state, args[0], &val);
+            if (err != 0) {
+                return err;
+            }
+        } else if (args_len == 0 && piped != NULL) {
+            val.is_scratch = false;
+            val.val = *piped;
+        } else {
+            return ERR_TEMPLATE_FUNC_INVALID;
         }
         result->is_scratch = false;
-        if (is_empty(&args[0].val)) {
+        if (is_empty(&val.val)) {
             result->val.ty = JSON_TY_TRUE;
         } else {
             result->val.ty = JSON_TY_FALSE;
         }
-        goto cleanup;
+    } else {
+        return ERR_TEMPLATE_FUNC_UNKNOWN;
     }
-
-    err = ERR_TEMPLATE_FUNC_UNKNOWN;
-cleanup:
-    for (size_t i = 0; i < args_len; i++) {
-        if (args[i].is_scratch) {
-            json_value_free(&args[i].val);
-        }
-    }
-    return err;
+    return stream_set_pos(in, pre_end);
 }
 
 int template_skip_comment(stream* in) {
