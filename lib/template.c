@@ -719,7 +719,10 @@ int template_parse_value(stream* in, state* state, tracked_value* result, unsign
     }
 }
 
-int template_parse_expr(stream* in, state* state, tracked_value* result, bool allow_var_mut, bool allow_pipe);
+#define TEMPLATE_PARSE_EXPR_NO_VAR_MUT 0x01
+#define TEMPLATE_PARSE_EXPR_NO_PIPE 0x02
+
+int template_parse_expr(stream* in, state* state, tracked_value* result, int flags);
 
 int template_parse_var_mutation(stream* in, state* state, tracked_value* result) {
     unsigned char cp[4];
@@ -774,7 +777,7 @@ int template_parse_var_mutation(stream* in, state* state, tracked_value* result)
         return err;
     }
     char* ident_copy = strdup(state->ident);
-    err = template_parse_expr(in, state, result, false, true);
+    err = template_parse_expr(in, state, result, TEMPLATE_PARSE_EXPR_NO_VAR_MUT);
     if (err != 0) {
         free(ident_copy);
         return err;
@@ -815,7 +818,7 @@ int template_parse_parenthesis(stream* in, state* state, tracked_value* result) 
     if (err != 0) {
         return err;
     }
-    err = template_parse_expr(in, state, result, true, true);
+    err = template_parse_expr(in, state, result, 0);
     if (err != 0) {
         return err;
     }
@@ -868,7 +871,7 @@ cleanup:
     return err;
 }
 
-int template_parse_expr(stream* in, state* state, tracked_value* result, bool allow_var_mut, bool allow_pipe) {
+int template_parse_expr(stream* in, state* state, tracked_value* result, int flags) {
     unsigned char cp[4];
     size_t cp_len;
     int err = template_next_nonspace(in, cp, &cp_len);
@@ -883,21 +886,21 @@ int template_parse_expr(stream* in, state* state, tracked_value* result, bool al
         if (err != 0) {
             return err;
         }
-        if (allow_pipe) {
-            return template_parse_pipe(in, state, result);
+        if (flags & TEMPLATE_PARSE_EXPR_NO_PIPE) {
+            return 0;
         }
-        return 0;
+        return template_parse_pipe(in, state, result);
     }
-    if (allow_var_mut) {
-        err = template_parse_value_with_var_mut(in, state, result, cp[0]);
-    } else {
+    if (flags & TEMPLATE_PARSE_EXPR_NO_VAR_MUT) {
         err = template_parse_value(in, state, result, cp[0]);
+    } else {
+        err = template_parse_value_with_var_mut(in, state, result, cp[0]);
     }
     if (err == 0) {
-        if (allow_pipe) {
-            return template_parse_pipe(in, state, result);
+        if (flags & TEMPLATE_PARSE_EXPR_NO_PIPE) {
+            return 0;
         }
-        return 0;
+        return template_parse_pipe(in, state, result);
     }
     if (err != ERR_TEMPLATE_NO_VALUE) {
         return err;
@@ -911,10 +914,10 @@ int template_parse_expr(stream* in, state* state, tracked_value* result, bool al
     if (err != 0) {
         return err;
     }
-    if (allow_pipe) {
-        return template_parse_pipe(in, state, result);
+    if (flags & TEMPLATE_PARSE_EXPR_NO_PIPE) {
+        return 0;
     }
-    return 0;
+    return template_parse_pipe(in, state, result);
 }
 
 int template_parse_arg(stream* in, state* state, tracked_value* arg) {
@@ -1139,7 +1142,7 @@ int template_if(stream* in, state* state) {
     while (true) {
         stack_push_frame(&state->stack);
         tracked_value cond;
-        int err = template_parse_expr(in, state, &cond, true, true);
+        int err = template_parse_expr(in, state, &cond, 0);
         if (err != 0) {
             stack_pop_frame(&state->stack);
             return err;
@@ -1239,7 +1242,7 @@ int template_parse_range_params(state* state, stream* in, range_params* params) 
         if (err != 0) {
             goto cleanup;
         }
-        err = template_parse_expr(in, state, &params->iterable, true, true);
+        err = template_parse_expr(in, state, &params->iterable, 0);
         goto cleanup;
     }
     err = template_parse_ident(in, state);
@@ -1289,7 +1292,7 @@ int template_parse_range_params(state* state, stream* in, range_params* params) 
                 goto cleanup;
             }
             params->value_name = strdup(state->ident);
-            err = template_parse_expr(in, state, &params->iterable, true, true);
+            err = template_parse_expr(in, state, &params->iterable, 0);
             goto cleanup;
         case '-':
         case '}':
@@ -1567,7 +1570,7 @@ int template_with(stream* in, state* state) {
     while (true) {
         stack_push_frame(&state->stack);
         tracked_value arg;
-        int err = template_parse_expr(in, state, &arg, true, true);
+        int err = template_parse_expr(in, state, &arg, 0);
         if (err == ERR_TEMPLATE_KEY_UNKNOWN) {
             arg.val = JSON_NULL;
             arg.is_scratch = false;
@@ -1818,7 +1821,7 @@ int template_eval_arg(stream* in, state* state, long where, tracked_value* resul
     if (err != 0) {
         return err;
     }
-    return template_parse_expr(in, state, result, true, false);
+    return template_parse_expr(in, state, result, TEMPLATE_PARSE_EXPR_NO_PIPE);
 }
 
 int template_dispatch_func(stream* in, state* state, json_value* piped, tracked_value* result) {
