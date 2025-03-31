@@ -173,6 +173,8 @@ testcase '{{ $a := true | not }}{{ $a }}' 'null'
 testcase '{{ ($a := true) | not }}{{ $a }}' 'null'
 testcase '{{ if . | not }} x {{ else }} y {{ end }}' 'true'
 testcase '{{ if . | not }} x {{ else }} y {{ end }}' 'false'
+testcase '{{ not true| not }}' 'null'
+testcase '{{ not true | not}}' 'null'
 
 if [ $FAILS -ne 0 ]; then
     printf "\nencountered %d failures\n" $FAILS

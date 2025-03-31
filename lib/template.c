@@ -719,7 +719,7 @@ int template_parse_value(stream* in, state* state, tracked_value* result, unsign
     }
 }
 
-int template_parse_expr(stream* in, state* state, tracked_value* result, bool allow_var_mut);
+int template_parse_expr(stream* in, state* state, tracked_value* result, bool allow_var_mut, bool allow_pipe);
 
 int template_parse_var_mutation(stream* in, state* state, tracked_value* result) {
     unsigned char cp[4];
@@ -774,7 +774,7 @@ int template_parse_var_mutation(stream* in, state* state, tracked_value* result)
         return err;
     }
     char* ident_copy = strdup(state->ident);
-    err = template_parse_expr(in, state, result, false);
+    err = template_parse_expr(in, state, result, false, true);
     if (err != 0) {
         free(ident_copy);
         return err;
@@ -815,7 +815,7 @@ int template_parse_parenthesis(stream* in, state* state, tracked_value* result) 
     if (err != 0) {
         return err;
     }
-    err = template_parse_expr(in, state, result, true);
+    err = template_parse_expr(in, state, result, true, true);
     if (err != 0) {
         return err;
     }
@@ -868,7 +868,7 @@ cleanup:
     return err;
 }
 
-int template_parse_expr(stream* in, state* state, tracked_value* result, bool allow_var_mut) {
+int template_parse_expr(stream* in, state* state, tracked_value* result, bool allow_var_mut, bool allow_pipe) {
     unsigned char cp[4];
     size_t cp_len;
     int err = template_next_nonspace(in, cp, &cp_len);
@@ -883,7 +883,10 @@ int template_parse_expr(stream* in, state* state, tracked_value* result, bool al
         if (err != 0) {
             return err;
         }
-        return template_parse_pipe(in, state, result);
+        if (allow_pipe) {
+            return template_parse_pipe(in, state, result);
+        }
+        return 0;
     }
     if (allow_var_mut) {
         err = template_parse_value_with_var_mut(in, state, result, cp[0]);
@@ -891,7 +894,10 @@ int template_parse_expr(stream* in, state* state, tracked_value* result, bool al
         err = template_parse_value(in, state, result, cp[0]);
     }
     if (err == 0) {
-        return template_parse_pipe(in, state, result);
+        if (allow_pipe) {
+            return template_parse_pipe(in, state, result);
+        }
+        return 0;
     }
     if (err != ERR_TEMPLATE_NO_VALUE) {
         return err;
@@ -905,7 +911,10 @@ int template_parse_expr(stream* in, state* state, tracked_value* result, bool al
     if (err != 0) {
         return err;
     }
-    return template_parse_pipe(in, state, result);
+    if (allow_pipe) {
+        return template_parse_pipe(in, state, result);
+    }
+    return 0;
 }
 
 int template_parse_arg(stream* in, state* state, tracked_value* arg) {
@@ -1130,7 +1139,7 @@ int template_if(stream* in, state* state) {
     while (true) {
         stack_push_frame(&state->stack);
         tracked_value cond;
-        int err = template_parse_expr(in, state, &cond, true);
+        int err = template_parse_expr(in, state, &cond, true, true);
         if (err != 0) {
             stack_pop_frame(&state->stack);
             return err;
@@ -1230,7 +1239,7 @@ int template_parse_range_params(state* state, stream* in, range_params* params) 
         if (err != 0) {
             goto cleanup;
         }
-        err = template_parse_expr(in, state, &params->iterable, true);
+        err = template_parse_expr(in, state, &params->iterable, true, true);
         goto cleanup;
     }
     err = template_parse_ident(in, state);
@@ -1280,7 +1289,7 @@ int template_parse_range_params(state* state, stream* in, range_params* params) 
                 goto cleanup;
             }
             params->value_name = strdup(state->ident);
-            err = template_parse_expr(in, state, &params->iterable, true);
+            err = template_parse_expr(in, state, &params->iterable, true, true);
             goto cleanup;
         case '-':
         case '}':
@@ -1558,7 +1567,7 @@ int template_with(stream* in, state* state) {
     while (true) {
         stack_push_frame(&state->stack);
         tracked_value arg;
-        int err = template_parse_expr(in, state, &arg, true);
+        int err = template_parse_expr(in, state, &arg, true, true);
         if (err == ERR_TEMPLATE_KEY_UNKNOWN) {
             arg.val = JSON_NULL;
             arg.is_scratch = false;
@@ -1702,6 +1711,13 @@ int template_dispatch_keyword(stream* in, state* state) {
 
 #define TEMPLATE_FUNC_ARGS_MAX 16
 
+// 2 cases:
+// - opening parenthesis => skip everything, consuming closing parenthesis => done
+// - no paranthesis (any space, brace, paren, pipe is terminal)
+//   - value <space> => trivial
+//   - value <terminal> => seek back => the next invocation needs to see the terminal
+// both cases are entwined here
+// - depth == 0 is unreachable with an opening paren, causing everything to to skipped except except the last closing brace
 int template_skip_expr(stream* in, long* start_pos) {
     unsigned char cp[4];
     size_t cp_len;
@@ -1751,19 +1767,28 @@ int template_skip_expr(stream* in, long* start_pos) {
         if (cp_len != 1) {
             continue;
         }
-        if (depth == 0 && isspace(cp[0])) {
-            return 0;
+        if (depth == 0) {
+            if (isspace(cp[0])) {
+                return 0;
+            }
+            if (cp[0] == '"' || cp[0] == '`') {
+                return ERR_TEMPLATE_INVALID_SYNTAX;
+            }
+            if (cp[0] == ')' || cp[0] == '|') {
+                return stream_seek(in, -cp_len);
+            }
         }
-        if (depth == 0 && cp[0] == '|') {
-            return ERR_TEMPLATE_NO_VALUE;
+        if (cp[0] == ')') {
+            if (opening_paren && depth == 1) {
+                return 0;
+            }
+            depth--;
+            continue;
         }
         if (cp[0] == '}') {
             return ERR_TEMPLATE_NO_VALUE;
         }
         if (cp[0] == '"') {
-            if (depth == 0) {
-                return ERR_TEMPLATE_INVALID_SYNTAX;
-            }
             char* str;
             err = template_parse_regular_str(in, &str);
             if (err != 0) {
@@ -1773,9 +1798,6 @@ int template_skip_expr(stream* in, long* start_pos) {
             continue;
         }
         if (cp[0] == '`') {
-            if (depth == 0) {
-                return ERR_TEMPLATE_INVALID_SYNTAX;
-            }
             char* str;
             err = template_parse_backtick_str(in, &str);
             if (err != 0) {
@@ -1788,19 +1810,6 @@ int template_skip_expr(stream* in, long* start_pos) {
             depth++;
             continue;
         }
-        if (cp[0] == ')') {
-            if (opening_paren) {
-                if (depth == 1) {
-                    return 0;
-                };
-            } else {
-                if (depth == 0) {
-                    return stream_seek(in, -cp_len);
-                }
-            }
-            depth--;
-            continue;
-        }
     }
 }
 
@@ -1809,7 +1818,7 @@ int template_eval_arg(stream* in, state* state, long where, tracked_value* resul
     if (err != 0) {
         return err;
     }
-    return template_parse_expr(in, state, result, true);
+    return template_parse_expr(in, state, result, true, false);
 }
 
 int template_dispatch_func(stream* in, state* state, json_value* piped, tracked_value* result) {
@@ -1988,7 +1997,11 @@ int template_dispatch_pipeline(stream* in, state* state, tracked_value* result) 
         if (err != 0) {
             return err;
         }
-        return template_dispatch_func(in, state, NULL, result);
+        err = template_dispatch_func(in, state, NULL, result);
+        if (err != 0) {
+            return err;
+        }
+        return template_parse_pipe(in, state, result);
     }
     // once here nothing of meaning was parsed
     return ERR_TEMPLATE_INVALID_SYNTAX;
