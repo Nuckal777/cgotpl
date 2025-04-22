@@ -10,6 +10,7 @@
 #include <string.h>
 
 #include "encode.h"
+#include "func.h"
 #include "json.h"
 #include "map.h"
 #include "stream.h"
@@ -114,25 +115,6 @@ void sprintentry(entry* e, void* userdata) {
     if (data->count != data->len) {
         buf_append(data->b, " ", 1);
     }
-}
-
-bool is_empty(json_value* val) {
-    switch (val->ty) {
-        case JSON_TY_NULL:
-        case JSON_TY_FALSE:
-            return true;
-        case JSON_TY_TRUE:
-            return false;
-        case JSON_TY_NUMBER:
-            return val->inner.num == 0.0;
-        case JSON_TY_STRING:
-            return strlen(val->inner.str) == 0;
-        case JSON_TY_ARRAY:
-            return val->inner.arr.len == 0;
-        case JSON_TY_OBJECT:
-            return val->inner.obj.count == 0;
-    }
-    assert(0);
 }
 
 #define STACK_REFS_CAP 4
@@ -587,11 +569,6 @@ int template_parse_var_value(stream* in, state* state, json_value* result) {
     return 0;
 }
 
-typedef struct {
-    json_value val;
-    bool is_scratch;
-} tracked_value;
-
 // seeks back in-front of first when returning ERR_TEMPLATE_NO_VALUE
 int template_parse_value(stream* in, state* state, tracked_value* result, unsigned char first) {
     unsigned char cp[4];
@@ -834,7 +811,7 @@ int template_parse_parenthesis(stream* in, state* state, tracked_value* result) 
     return 0;
 }
 
-int template_dispatch_func(stream* in, state* state, json_value* piped, tracked_value* result);
+int template_dispatch_func(stream* in, state* state, tracked_value* piped, tracked_value* result);
 
 int template_parse_pipe(stream* in, state* state, tracked_value* result) {
     unsigned char cp[4];
@@ -859,7 +836,7 @@ int template_parse_pipe(stream* in, state* state, tracked_value* result) {
     } else {
         last.val = result->val;
     }
-    err = template_dispatch_func(in, state, &last.val, result);
+    err = template_dispatch_func(in, state, &last, result);
     if (err != 0) {
         goto cleanup;
     }
@@ -1336,7 +1313,7 @@ int compare_str(const void* a, const void* b) {
 }
 
 #ifdef FUZZING_BUILD_MODE
-#define RANGE_INT_MAX 16
+#define RANGE_INT_MAX 8
 #else
 #define RANGE_INT_MAX SIZE_MAX
 #endif
@@ -1824,7 +1801,27 @@ int template_eval_arg(stream* in, state* state, long where, tracked_value* resul
     return template_parse_expr(in, state, result, TEMPLATE_PARSE_EXPR_NO_PIPE);
 }
 
-int template_dispatch_func(stream* in, state* state, json_value* piped, tracked_value* result) {
+int template_arg_iter_next(template_arg_iter* iter, tracked_value* result) {
+    if (iter->idx < iter->args_len) {
+        int err = template_eval_arg(iter->in, (state*)iter->state, iter->args[iter->idx], result);
+        if (err != 0) {
+            return err;
+        }
+        iter->idx++;
+        return 0;
+    }
+    if (iter->idx == iter->args_len && iter->piped != NULL) {
+        *result = *iter->piped;
+        return 0;
+    }
+    return 0;
+}
+
+int template_arg_iter_len(template_arg_iter* iter) {
+    return iter->args_len + (iter->piped ? 1 : 0);
+}
+
+int template_dispatch_func(stream* in, state* state, tracked_value* piped, tracked_value* result) {
     int err = template_parse_ident(in, state);
     if (err != 0) {
         return err;
@@ -1849,27 +1846,31 @@ int template_dispatch_func(stream* in, state* state, json_value* piped, tracked_
         }
         args_len++;
     }
+
     err = 0;
+    template_arg_iter iter = {
+        .in = in,
+        .args = args,
+        .idx = 0,
+        .args_len = args_len,
+        .piped = piped,
+        .state = state,
+    };
 
     if (strcmp(func_name, "not") == 0) {
-        tracked_value val;
-        val.val = JSON_NULL;
-        if (args_len == 1 && piped == NULL) {
-            err = template_eval_arg(in, state, args[0], &val);
-            if (err != 0) {
-                return err;
-            }
-        } else if (args_len == 0 && piped != NULL) {
-            val.is_scratch = false;
-            val.val = *piped;
-        } else {
-            return ERR_TEMPLATE_FUNC_INVALID;
+        err = func_not(&iter, result);
+        if (err != 0) {
+            return err;
         }
-        result->is_scratch = false;
-        if (is_empty(&val.val)) {
-            result->val.ty = JSON_TY_TRUE;
-        } else {
-            result->val.ty = JSON_TY_FALSE;
+    } else if (strcmp(func_name, "and") == 0) {
+        err = func_and(&iter, result);
+        if (err != 0) {
+            return err;
+        }
+    } else if (strcmp(func_name, "or") == 0) {
+        err = func_or(&iter, result);
+        if (err != 0) {
+            return err;
         }
     } else {
         return ERR_TEMPLATE_FUNC_UNKNOWN;

@@ -108,7 +108,7 @@ Syntactical issues in non-executed branches may not lead to an error.
 
 | Function | State              |
 | -------- | ------------------ |
-| and      | :x:                |
+| and      | :white_check_mark: |
 | call     | :x:                |
 | html     | :x:                |
 | index    | :x:                |
@@ -116,7 +116,7 @@ Syntactical issues in non-executed branches may not lead to an error.
 | js       | :x:                |
 | len      | :x:                |
 | not      | :white_check_mark: |
-| or       | :x:                |
+| or       | :white_check_mark: |
 | print    | :x:                |
 | printf   | :x:                |
 | println  | :x:                |

@@ -175,6 +175,11 @@ testcase '{{ if . | not }} x {{ else }} y {{ end }}' 'true'
 testcase '{{ if . | not }} x {{ else }} y {{ end }}' 'false'
 testcase '{{ not true| not }}' 'null'
 testcase '{{ not true | not}}' 'null'
+testcase '{{ and 0 0 }}{{ and 1 0 }}{{ and 0 1 }}{{ and 1 1 }}' 'null'
+testcase '{{ or 0 0 }}{{ or 1 0 }}{{ or 0 1 }}{{ or 1 1 }}' 'null'
+testcase '{{ and .a .b }}' '{a: 0, b: 1}'
+testcase '{{ or .a .b }}' '{a: 0, b: 1}'
+testcase '{{if or ($f := 1) ($g := 0) }} {{ $g }} {{ end }}' 'null'
 
 if [ $FAILS -ne 0 ]; then
     printf "\nencountered %d failures\n" $FAILS

@@ -2,6 +2,7 @@
 
 #include <string.h>
 
+#include "func.h"
 #include "test.h"
 
 nutest_result assert_eval_null(const char* tpl, const char* expected) {
@@ -416,11 +417,19 @@ nutest_result template_func_not_false(void) {
 }
 
 nutest_result template_func_not_no_args(void) {
-    return assert_eval_err("{{ not }}", ERR_TEMPLATE_FUNC_INVALID);
+    return assert_eval_err("{{ not }}", ERR_FUNC_INVALID_ARG_LEN);
 }
 
 nutest_result template_func_not_many_args(void) {
-    return assert_eval_err("{{ not true false `hi` }}", ERR_TEMPLATE_FUNC_INVALID);
+    return assert_eval_err("{{ not true false `hi` }}", ERR_FUNC_INVALID_ARG_LEN);
+}
+
+nutest_result template_func_and(void) {
+    return assert_eval_null("{{ and 0 0 }}{{ and 1 0 }}{{ and 0 1 }}{{ and 1 1 }}", "0001");
+}
+
+nutest_result template_func_or(void) {
+    return assert_eval_null("{{ or 0 0 }}{{ or 1 0 }}{{ or 0 1 }}{{ or 1 1 }}", "0111");
 }
 
 nutest_result template_func_if_arg(void) {
@@ -468,7 +477,7 @@ nutest_result template_pipe_no_func(void) {
 }
 
 nutest_result template_pipe_invalid_args(void) {
-    return assert_eval_err("{{ 7 | not true }}", ERR_TEMPLATE_FUNC_INVALID);
+    return assert_eval_err("{{ 7 | not true }}", ERR_FUNC_INVALID_ARG_LEN);
 }
 
 nutest_result template_pipe_var_def(void) {
@@ -585,6 +594,8 @@ int main() {
     nutest_register(template_func_not_false);
     nutest_register(template_func_not_no_args);
     nutest_register(template_func_not_many_args);
+    nutest_register(template_func_and);
+    nutest_register(template_func_or);
     nutest_register(template_func_if_arg);
     nutest_register(template_func_with_arg);
     nutest_register(template_parenthesis_val);

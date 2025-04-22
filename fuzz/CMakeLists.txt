@@ -13,7 +13,7 @@ target_link_libraries(fuzz_template PRIVATE fuzz_cgotpl)
 
 add_custom_target(
     fuzz
-    COMMAND "${CMAKE_CURRENT_BINARY_DIR}/fuzz_json" -max_total_time=20 "-dict=${CMAKE_CURRENT_SOURCE_DIR}/json.dict" "${CMAKE_CURRENT_SOURCE_DIR}/json.corpus"
-    COMMAND "${CMAKE_CURRENT_BINARY_DIR}/fuzz_template" -max_total_time=20 "-dict=${CMAKE_CURRENT_SOURCE_DIR}/template.dict" "${CMAKE_CURRENT_SOURCE_DIR}/template.corpus"
+    COMMAND "${CMAKE_CURRENT_BINARY_DIR}/fuzz_json" -max_total_time=20 -timeout=10 "-dict=${CMAKE_CURRENT_SOURCE_DIR}/json.dict" "${CMAKE_CURRENT_SOURCE_DIR}/json.corpus"
+    COMMAND "${CMAKE_CURRENT_BINARY_DIR}/fuzz_template" -max_total_time=20 -timeout=10 "-dict=${CMAKE_CURRENT_SOURCE_DIR}/template.dict" "${CMAKE_CURRENT_SOURCE_DIR}/template.corpus"
     DEPENDS fuzz_json fuzz_template
 )
