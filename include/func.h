@@ -2,12 +2,17 @@
 #define CGOTPL_FUNC
 
 #include <stddef.h>
+
 #include "json.h"
 
 typedef struct {
     json_value val;
-    bool is_scratch;
+    bool is_heap;
 } tracked_value;
+
+#define TRACKED_NULL (tracked_value){.is_heap = false, .val = JSON_NULL}
+
+void tracked_value_free(tracked_value* val);
 
 typedef struct {
     stream* in;

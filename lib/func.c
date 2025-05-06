@@ -1,10 +1,17 @@
+#include "func.h"
+
 #include <assert.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <string.h>
+
 #include "json.h"
 
-#include "func.h"
+void tracked_value_free(tracked_value* val) {
+    if (val->is_heap) {
+        json_value_free(&val->val);
+    }
+}
 
 bool is_empty(json_value* val) {
     switch (val->ty) {
@@ -29,17 +36,19 @@ int func_not(template_arg_iter* iter, tracked_value* out) {
     if (template_arg_iter_len(iter) != 1) {
         return ERR_FUNC_INVALID_ARG_LEN;
     }
-    tracked_value val;
+    tracked_value val = TRACKED_NULL;
     int err = template_arg_iter_next(iter, &val);
     if (err != 0) {
+        tracked_value_free(&val);
         return err;
     }
-    out->is_scratch = false;
+    out->is_heap = false;
     if (is_empty(&val.val)) {
         out->val.ty = JSON_TY_TRUE;
     } else {
         out->val.ty = JSON_TY_FALSE;
     }
+    tracked_value_free(&val);
     return 0;
 }
 
@@ -48,18 +57,19 @@ int func_and(template_arg_iter* iter, tracked_value* out) {
     if (args_len == 0) {
         return ERR_FUNC_INVALID_ARG_LEN;
     }
-    tracked_value current;
     for (size_t i = 0; i < args_len; i++) {
+        tracked_value current = TRACKED_NULL;
         int err = template_arg_iter_next(iter, &current);
         if (err != 0) {
+            tracked_value_free(&current);
             return err;
         }
-        if (is_empty(&current.val)) {
+        if (i == args_len - 1 || is_empty(&current.val)) {
             *out = current;
             return 0;
         }
+        tracked_value_free(&current);
     }
-    *out = current;
     return 0;
 }
 
@@ -68,17 +78,18 @@ int func_or(template_arg_iter* iter, tracked_value* out) {
     if (args_len == 0) {
         return ERR_FUNC_INVALID_ARG_LEN;
     }
-    tracked_value current;
     for (size_t i = 0; i < args_len; i++) {
+        tracked_value current = TRACKED_NULL;
         int err = template_arg_iter_next(iter, &current);
         if (err != 0) {
+            tracked_value_free(&current);
             return err;
         }
-        if (!is_empty(&current.val)) {
+        if (i == args_len - 1 || !is_empty(&current.val)) {
             *out = current;
             return 0;
         }
+        tracked_value_free(&current);
     }
-    *out = current;
     return 0;
 }
