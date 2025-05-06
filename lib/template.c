@@ -826,11 +826,9 @@ int template_parse_pipe(stream* in, state* state, tracked_value* result) {
     *result = TRACKED_NULL;
     err = template_dispatch_func(in, state, &last, result);
     if (err != 0) {
-        goto cleanup;
+        return err;
     }
-    err = template_parse_pipe(in, state, result);
-cleanup:
-    return err;
+    return template_parse_pipe(in, state, result);
 }
 
 int template_parse_expr(stream* in, state* state, tracked_value* result, int flags) {
@@ -1824,85 +1822,74 @@ int template_arg_iter_len(template_arg_iter* iter) {
     return iter->args_len + (iter->piped ? 1 : 0);
 }
 
-void template_arg_iter_free(template_arg_iter* iter) {
-    if (iter->piped == NULL) {
-        return;
+int template_invoke_func(const char* func_name, template_arg_iter* iter, tracked_value* result) {
+    int err = 0;
+    if (strcmp(func_name, "not") == 0) {
+        err = func_not(iter, result);
+        if (err != 0) {
+            return err;
+        }
+    } else if (strcmp(func_name, "and") == 0) {
+        err = func_and(iter, result);
+        if (err != 0) {
+            return err;
+        }
+    } else if (strcmp(func_name, "or") == 0) {
+        err = func_or(iter, result);
+        if (err != 0) {
+            return err;
+        }
+    } else {
+        return ERR_TEMPLATE_FUNC_UNKNOWN;
     }
-    if (iter->idx < iter->args_len + 1) {
-        tracked_value_free(iter->piped);
-        return;
-    }
+    return 0;
 }
 
 int template_dispatch_func(stream* in, state* state, tracked_value* piped, tracked_value* result) {
-    int err = template_parse_ident(in, state);
-    if (err != 0) {
-        if (piped != NULL) {
-            tracked_value_free(piped);
-        }
-        return err;
-    }
-    char func_name[STATE_IDENT_CAP];
-    strcpy(func_name, state->ident);
     long args[TEMPLATE_FUNC_ARGS_MAX];
-    size_t args_len = 0;
-    long pre_end;
-    while (true) {
-        if (args_len == TEMPLATE_FUNC_ARGS_MAX) {
-            err = ERR_TEMPLATE_BUFFER_OVERFLOW;
-            if (piped != NULL) {
-                tracked_value_free(piped);
-            }
-            return err;
-        }
-        err = template_skip_expr(in, args + args_len);
-        if (err == ERR_TEMPLATE_NO_VALUE) {
-            pre_end = args[args_len];
-            break;
-        }
-        if (err != 0) {
-            if (piped != NULL) {
-                tracked_value_free(piped);
-            }
-            return err;
-        }
-        args_len++;
-    }
-
-    err = 0;
     template_arg_iter iter = {
         .in = in,
         .args = args,
         .idx = 0,
-        .args_len = args_len,
+        .args_len = 0,
         .piped = piped,
         .state = state,
     };
-
-    if (strcmp(func_name, "not") == 0) {
-        err = func_not(&iter, result);
-        if (err != 0) {
-            template_arg_iter_free(&iter);
-            return err;
-        }
-    } else if (strcmp(func_name, "and") == 0) {
-        err = func_and(&iter, result);
-        if (err != 0) {
-            template_arg_iter_free(&iter);
-            return err;
-        }
-    } else if (strcmp(func_name, "or") == 0) {
-        err = func_or(&iter, result);
-        if (err != 0) {
-            template_arg_iter_free(&iter);
-            return err;
-        }
-    } else {
-        template_arg_iter_free(&iter);
-        return ERR_TEMPLATE_FUNC_UNKNOWN;
+    int err = template_parse_ident(in, state);
+    if (err != 0) {
+        goto cleanup;
     }
-    template_arg_iter_free(&iter);
-    return stream_set_pos(in, pre_end);
+    char func_name[STATE_IDENT_CAP];
+    strcpy(func_name, state->ident);
+    long pre_end;
+    while (true) {
+        if (iter.args_len == TEMPLATE_FUNC_ARGS_MAX) {
+            err = ERR_TEMPLATE_BUFFER_OVERFLOW;
+            goto cleanup;
+        }
+        err = template_skip_expr(in, args + iter.args_len);
+        if (err == ERR_TEMPLATE_NO_VALUE) {
+            pre_end = args[iter.args_len];
+            break;
+        }
+        if (err != 0) {
+            goto cleanup;
+        }
+        iter.args_len++;
+    }
+
+    err = template_invoke_func(func_name, &iter, result);
+    if (err != 0) {
+        goto cleanup;
+    }
+    err = stream_set_pos(in, pre_end);
+cleanup:
+    // func impls shall free every tracked_value requested
+    // from the iter, hence check where the iter is at.
+    if (piped != NULL && iter.idx < iter.args_len + 1) {
+        tracked_value_free(piped);
+    }
+    return err;
 }
 
 int template_skip_comment(stream* in) {
