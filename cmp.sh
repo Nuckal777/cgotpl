@@ -180,6 +180,10 @@ testcase '{{ or 0 0 }}{{ or 1 0 }}{{ or 0 1 }}{{ or 1 1 }}' 'null'
 testcase '{{ and .a .b }}' '{a: 0, b: 1}'
 testcase '{{ or .a .b }}' '{a: 0, b: 1}'
 testcase '{{if or ($f := 1) ($g := 0) }} {{ $g }} {{ end }}' 'null'
+testcase '{{ len `zyxcba`}}' 'null'
+testcase '{{ len . }}' '[1,2,3,4,5,6,7,8]'
+testcase '{{ len . }}' '{"1": 1,"2": 2,"3": 3,"4": 4}'
+testcase '{{ len 987 }}' 'null'
 
 if [ $FAILS -ne 0 ]; then
     printf "\nencountered %d failures\n" $FAILS

@@ -24,6 +24,7 @@ typedef struct {
 } template_arg_iter;
 
 #define ERR_FUNC_INVALID_ARG_LEN -1000
+#define ERR_FUNC_INVALID_ARG_TYPE -1001
 
 int template_arg_iter_next(template_arg_iter* iter, tracked_value* result);
 int template_arg_iter_len(template_arg_iter* iter);
@@ -32,5 +33,6 @@ bool is_empty(json_value* val);
 int func_not(template_arg_iter* iter, tracked_value* out);
 int func_and(template_arg_iter* iter, tracked_value* out);
 int func_or(template_arg_iter* iter, tracked_value* out);
+int func_len(template_arg_iter* iter, tracked_value* out);
 
 #endif

@@ -1853,6 +1853,8 @@ int template_dispatch_func(stream* in, state* state, tracked_value* piped, track
         err = func_and(&iter, result);
     } else if (strcmp(func_name, "or") == 0) {
         err = func_or(&iter, result);
+    } else if (strcmp(func_name, "len") == 0) {
+        err = func_len(&iter, result);
     }
     if (err != 0) {
         goto cleanup;

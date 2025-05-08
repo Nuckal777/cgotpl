@@ -36,19 +36,19 @@ int func_not(template_arg_iter* iter, tracked_value* out) {
     if (template_arg_iter_len(iter) != 1) {
         return ERR_FUNC_INVALID_ARG_LEN;
     }
-    tracked_value val = TRACKED_NULL;
-    int err = template_arg_iter_next(iter, &val);
+    tracked_value arg = TRACKED_NULL;
+    int err = template_arg_iter_next(iter, &arg);
     if (err != 0) {
-        tracked_value_free(&val);
+        tracked_value_free(&arg);
         return err;
     }
     out->is_heap = false;
-    if (is_empty(&val.val)) {
+    if (is_empty(&arg.val)) {
         out->val.ty = JSON_TY_TRUE;
     } else {
         out->val.ty = JSON_TY_FALSE;
     }
-    tracked_value_free(&val);
+    tracked_value_free(&arg);
     return 0;
 }
 
@@ -92,4 +92,34 @@ int func_or(template_arg_iter* iter, tracked_value* out) {
         tracked_value_free(&current);
     }
     return 0;
+}
+
+int func_len(template_arg_iter* iter, tracked_value* out) {
+    if (template_arg_iter_len(iter) != 1) {
+        return ERR_FUNC_INVALID_ARG_LEN;
+    }
+    tracked_value arg = TRACKED_NULL;
+    int err = template_arg_iter_next(iter, &arg);
+    if (err != 0) {
+        tracked_value_free(&arg);
+        return err;
+    }
+    out->is_heap = false;
+    out->val.ty = JSON_TY_NUMBER;
+    switch (arg.val.ty) {
+        case JSON_TY_STRING:
+            out->val.inner.num = strlen(arg.val.inner.str);
+            break;
+        case JSON_TY_ARRAY:
+            out->val.inner.num = arg.val.inner.arr.len;
+            break;
+        case JSON_TY_OBJECT:
+            out->val.inner.num = arg.val.inner.obj.count;
+            break;
+        default:
+            err = ERR_FUNC_INVALID_ARG_TYPE;
+            break;
+    }
+    tracked_value_free(&arg);
+    return err;
 }

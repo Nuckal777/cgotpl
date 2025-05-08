@@ -114,7 +114,7 @@ Syntactical issues in non-executed branches may not lead to an error.
 | index    | :x:                |
 | slice    | :x:                |
 | js       | :x:                |
-| len      | :x:                |
+| len      | :white_check_mark: |
 | not      | :white_check_mark: |
 | or       | :white_check_mark: |
 | print    | :x:                |

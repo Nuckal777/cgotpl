@@ -432,6 +432,22 @@ nutest_result template_func_or(void) {
     return assert_eval_null("{{ or 0 0 }}{{ or 1 0 }}{{ or 0 1 }}{{ or 1 1 }}", "0111");
 }
 
+nutest_result template_func_len_str(void) {
+    return assert_eval_null("{{ len `abc` }}", "3");
+}
+
+nutest_result template_func_len_arr(void) {
+    return assert_eval_data("{{ len . }}", "[1, 2]", "2");
+}
+
+nutest_result template_func_len_obj(void) {
+    return assert_eval_data("{{ len . }}", "{\"x\":3, \"y\": []}", "2");
+}
+
+nutest_result template_func_len_num(void) {
+    return assert_eval_err("{{ len 56 }}", ERR_FUNC_INVALID_ARG_TYPE);
+}
+
 nutest_result template_func_if_arg(void) {
     return assert_eval_null("{{ if not false -}} yes {{- end }}", "yes");
 }
@@ -596,6 +612,10 @@ int main() {
     nutest_register(template_func_not_many_args);
     nutest_register(template_func_and);
     nutest_register(template_func_or);
+    nutest_register(template_func_len_str);
+    nutest_register(template_func_len_obj);
+    nutest_register(template_func_len_arr);
+    nutest_register(template_func_len_num);
     nutest_register(template_func_if_arg);
     nutest_register(template_func_with_arg);
     nutest_register(template_parenthesis_val);
