@@ -1555,19 +1555,10 @@ int template_with(stream* in, state* state) {
             err = template_noop(in, state);
         } else {
             any_branch = true;
-            json_value next;
-            if (arg.is_heap) {
-                json_value_copy(&next, &arg.val);
-            } else {
-                next = arg.val;
-            }
             json_value* previous = state->dot;
-            state->dot = &next;
+            state->dot = &arg.val;
             err = template_plain(in, state);
             state->dot = previous;
-            if (arg.is_heap) {
-                json_value_free(&next);
-            }
         }
         tracked_value_free(&arg);
         if (err != 0) {
