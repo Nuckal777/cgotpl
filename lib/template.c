@@ -1813,29 +1813,6 @@ int template_arg_iter_len(template_arg_iter* iter) {
     return iter->args_len + (iter->piped ? 1 : 0);
 }
 
-int template_invoke_func(const char* func_name, template_arg_iter* iter, tracked_value* result) {
-    int err = 0;
-    if (strcmp(func_name, "not") == 0) {
-        err = func_not(iter, result);
-        if (err != 0) {
-            return err;
-        }
-    } else if (strcmp(func_name, "and") == 0) {
-        err = func_and(iter, result);
-        if (err != 0) {
-            return err;
-        }
-    } else if (strcmp(func_name, "or") == 0) {
-        err = func_or(iter, result);
-        if (err != 0) {
-            return err;
-        }
-    } else {
-        return ERR_TEMPLATE_FUNC_UNKNOWN;
-    }
-    return 0;
-}
-
 int template_dispatch_func(stream* in, state* state, tracked_value* piped, tracked_value* result) {
     long args[TEMPLATE_FUNC_ARGS_MAX];
     template_arg_iter iter = {
@@ -1869,7 +1846,14 @@ int template_dispatch_func(stream* in, state* state, tracked_value* piped, track
         iter.args_len++;
     }
 
-    err = template_invoke_func(func_name, &iter, result);
+    err = ERR_TEMPLATE_FUNC_UNKNOWN;
+    if (strcmp(func_name, "not") == 0) {
+        err = func_not(&iter, result);
+    } else if (strcmp(func_name, "and") == 0) {
+        err = func_and(&iter, result);
+    } else if (strcmp(func_name, "or") == 0) {
+        err = func_or(&iter, result);
+    }
     if (err != 0) {
         goto cleanup;
     }
