@@ -5,12 +5,29 @@
 
 #include "json.h"
 
+#define ERR_BUF_OVERFLOW -1100
+
+typedef struct {
+    char* data;
+    size_t len;
+    size_t cap;
+} buf;
+
+void buf_init(buf* b);
+void buf_append(buf* b, const char* arr, size_t n);
+void buf_free(buf* b);
+
+int sprintval(buf* b, json_value* val);
+
 typedef struct {
     json_value val;
     bool is_heap;
 } tracked_value;
 
-#define TRACKED_NULL (tracked_value){.is_heap = false, .val = JSON_NULL}
+#define TRACKED_NULL                       \
+    (tracked_value) {                      \
+        .is_heap = false, .val = JSON_NULL \
+    }
 
 void tracked_value_free(tracked_value* val);
 
