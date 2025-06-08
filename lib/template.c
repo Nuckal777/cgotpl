@@ -656,12 +656,17 @@ int template_parse_var_mutation(stream* in, state* state, tracked_value* result)
     }
     json_value* value_copy = malloc(sizeof(json_value));
     assert(value_copy);
-    json_value_copy(value_copy, &result->val);
+    if (result->is_heap) {
+        *value_copy = result->val;
+        result->is_heap = false;
+    } else {
+        // in case of $var=$var the second $var would be returned as result, although
+        // it is freed in stack_set_var
+        json_value_copy(value_copy, &result->val);
+        result->val = *value_copy;
+    }
+    result->is_heap = false;
     stack_set_var(&state->stack, ident_copy, value_copy);
-    // in case of $var=$var the second $var would be returned as result, although
-    // it is freed in stack_set_var
-    // result->val = *value_copy;
-    // result->is_heap = false;
     return 0;
 }
 
@@ -1699,6 +1704,7 @@ int template_arg_iter_next(template_arg_iter* iter, tracked_value* result) {
         int err = template_eval_arg(iter->in, (state*)iter->state, iter->args[iter->idx], result);
         iter->idx++;
         if (err != 0) {
+            tracked_value_free(result);
             return err;
         }
         return 0;

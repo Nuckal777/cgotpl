@@ -137,7 +137,6 @@ int func_not(template_arg_iter* iter, tracked_value* out) {
     tracked_value arg = TRACKED_NULL;
     int err = template_arg_iter_next(iter, &arg);
     if (err != 0) {
-        tracked_value_free(&arg);
         return err;
     }
     out->is_heap = false;
@@ -159,7 +158,6 @@ int func_and(template_arg_iter* iter, tracked_value* out) {
         tracked_value current = TRACKED_NULL;
         int err = template_arg_iter_next(iter, &current);
         if (err != 0) {
-            tracked_value_free(&current);
             return err;
         }
         if (i == args_len - 1 || is_empty(&current.val)) {
@@ -180,7 +178,6 @@ int func_or(template_arg_iter* iter, tracked_value* out) {
         tracked_value current = TRACKED_NULL;
         int err = template_arg_iter_next(iter, &current);
         if (err != 0) {
-            tracked_value_free(&current);
             return err;
         }
         if (i == args_len - 1 || !is_empty(&current.val)) {
@@ -199,7 +196,6 @@ int func_len(template_arg_iter* iter, tracked_value* out) {
     tracked_value arg = TRACKED_NULL;
     int err = template_arg_iter_next(iter, &arg);
     if (err != 0) {
-        tracked_value_free(&arg);
         return err;
     }
     out->is_heap = false;

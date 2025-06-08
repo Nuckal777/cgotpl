@@ -26,7 +26,7 @@
 "and"
 "or"
 "len"
-"print"
+"println"
 
 "\\b"
 "\\f"
