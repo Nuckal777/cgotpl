@@ -644,7 +644,7 @@ int template_parse_var_mutation(stream* in, state* state, tracked_value* result)
         return err;
     }
     char* ident_copy = strdup(state->ident);
-    err = template_parse_expr(in, state, result, TEMPLATE_PARSE_EXPR_NO_VAR_MUT);
+    err = template_parse_expr(in, state, result, TEMPLATE_PARSE_EXPR_NO_VAR_MUT);  // result holds right side of assignment
     if (err != 0) {
         free(ident_copy);
         return err;
@@ -658,6 +658,10 @@ int template_parse_var_mutation(stream* in, state* state, tracked_value* result)
     assert(value_copy);
     json_value_copy(value_copy, &result->val);
     stack_set_var(&state->stack, ident_copy, value_copy);
+    // in case of $var=$var the second $var would be returned as result, although
+    // it is freed in stack_set_var
+    // result->val = *value_copy;
+    // result->is_heap = false;
     return 0;
 }
 
@@ -1753,6 +1757,10 @@ int template_dispatch_func(stream* in, state* state, tracked_value* piped, track
         err = func_or(&iter, result);
     } else if (strcmp(func_name, "len") == 0) {
         err = func_len(&iter, result);
+    } else if (strcmp(func_name, "print") == 0) {
+        err = func_print(&iter, result);
+    } else if (strcmp(func_name, "println") == 0) {
+        err = func_println(&iter, result);
     }
     if (err != 0) {
         goto cleanup;

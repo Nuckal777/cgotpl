@@ -448,6 +448,14 @@ nutest_result template_func_len_num(void) {
     return assert_eval_err("{{ len 56 }}", ERR_FUNC_INVALID_ARG_TYPE);
 }
 
+nutest_result template_func_print(void) {
+    return assert_eval_data("{{ print \"a\" .x . true false 7 }}", "{\"x\": [1,2]}", "a [1 2] map[x:[1 2]] true false 7");
+}
+
+nutest_result template_func_println(void) {
+    return assert_eval_null("{{ println 321 }}", "321\n");
+}
+
 nutest_result template_func_if_arg(void) {
     return assert_eval_null("{{ if not false -}} yes {{- end }}", "yes");
 }
@@ -616,6 +624,8 @@ int main() {
     nutest_register(template_func_len_obj);
     nutest_register(template_func_len_arr);
     nutest_register(template_func_len_num);
+    nutest_register(template_func_print);
+    nutest_register(template_func_println);
     nutest_register(template_func_if_arg);
     nutest_register(template_func_with_arg);
     nutest_register(template_parenthesis_val);

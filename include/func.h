@@ -51,5 +51,7 @@ int func_not(template_arg_iter* iter, tracked_value* out);
 int func_and(template_arg_iter* iter, tracked_value* out);
 int func_or(template_arg_iter* iter, tracked_value* out);
 int func_len(template_arg_iter* iter, tracked_value* out);
+int func_print(template_arg_iter* iter, tracked_value* out);
+int func_println(template_arg_iter* iter, tracked_value* out);
 
 #endif

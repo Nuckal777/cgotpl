@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -219,4 +220,53 @@ int func_len(template_arg_iter* iter, tracked_value* out) {
     }
     tracked_value_free(&arg);
     return err;
+}
+
+int buf_print(template_arg_iter* iter, buf* b) {
+    buf_init(b);
+    size_t args_len = template_arg_iter_len(iter);
+    for (size_t i = 0; i < args_len; i++) {
+        tracked_value arg = TRACKED_NULL;
+        int err = template_arg_iter_next(iter, &arg);
+        if (err != 0) {
+            buf_free(b);
+            return err;
+        }
+        err = sprintval(b, &arg.val);
+        tracked_value_free(&arg);
+        if (err != 0) {
+            buf_free(b);
+            return err;
+        }
+        if (i != args_len - 1) {
+            buf_append(b, " ", 1);
+        }
+    }
+    return 0;
+}
+
+int func_print(template_arg_iter* iter, tracked_value* out) {
+    buf b;
+    int err = buf_print(iter, &b);
+    if (err != 0) {
+        return err;
+    }
+    buf_append(&b, "", 1);
+    out->is_heap = true;
+    out->val.ty = JSON_TY_STRING;
+    out->val.inner.str = b.data;
+    return 0;
+}
+
+int func_println(template_arg_iter* iter, tracked_value* out) {
+    buf b;
+    int err = buf_print(iter, &b);
+    if (err != 0) {
+        return err;
+    }
+    buf_append(&b, "\n", 2);
+    out->is_heap = true;
+    out->val.ty = JSON_TY_STRING;
+    out->val.inner.str = b.data;
+    return 0;
 }

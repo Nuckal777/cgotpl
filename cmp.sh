@@ -184,6 +184,17 @@ testcase '{{ len `zyxcba`}}' 'null'
 testcase '{{ len . }}' '[1,2,3,4,5,6,7,8]'
 testcase '{{ len . }}' '{"1": 1,"2": 2,"3": 3,"4": 4}'
 testcase '{{ len 987 }}' 'null'
+testcase '{{ print . }}' 'true'
+testcase '{{ print . }}' 'false'
+testcase '{{ print . }}' 'null'
+testcase '{{ print . }}' '654'
+testcase '{{ print . }}' '"cba"'
+testcase '{{ print . }}' '[9,8,7]'
+testcase '{{ print . }}' '{"h": "i"}'
+testcase '{{ print }}' 'null'
+testcase '{{ println . }}' '789'
+testcase '{{ println }}' 'null'
+testcase '{{ $s := println 924 }} {{ $s }}' 'null'
 
 if [ $FAILS -ne 0 ]; then
     printf "\nencountered %d failures\n" $FAILS
