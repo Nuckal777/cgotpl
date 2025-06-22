@@ -1461,11 +1461,17 @@ int template_with(stream* in, state* state) {
         if (arg_empty) {
             err = template_noop(in, state);
         } else {
+            // Add another stack frame in case arg originates from the stack
+            // but is reassigned in the body causing a double-free, e.g.
+            // "{{ with $ = . }}{{ $ = "a" }}{{ . }}".
+            // The second assignment would free arg once
+            stack_push_frame(&state->stack);
             any_branch = true;
             json_value* previous = state->dot;
             state->dot = &arg.val;
             err = template_plain(in, state);
             state->dot = previous;
+            stack_pop_frame(&state->stack);
         }
         tracked_value_free(&arg);
         if (err != 0) {
