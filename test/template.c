@@ -456,6 +456,38 @@ nutest_result template_func_println(void) {
     return assert_eval_null("{{ println 321 }}", "321\n");
 }
 
+nutest_result template_func_index_no_arg(void) {
+    return assert_eval_err("{{ index }}", ERR_FUNC_INVALID_ARG_LEN);
+}
+
+nutest_result template_func_index_single_arg(void) {
+    return assert_eval_null("{{ index 7 }}", "7");
+}
+
+nutest_result template_func_index_invalid_type(void) {
+    return assert_eval_err("{{ index 7 true }}", ERR_FUNC_INVALID_ARG_TYPE);
+}
+
+nutest_result template_func_index_simple_obj(void) {
+    return assert_eval_data("{{ index . \"z\" }}", "{\"z\":\"y\"}", "y");
+}
+
+nutest_result template_func_index_nested_obj(void) {
+    return assert_eval_data("{{ index . \"z\" \"y\" }}", "{\"z\": {\"y\": 34}}", "34");
+}
+
+nutest_result template_func_index_simple_arr(void) {
+    return assert_eval_data("{{ index . 1 }}", "[4,5,6]", "5");
+}
+
+nutest_result template_func_index_nested_arr(void) {
+    return assert_eval_data("{{ index . 1 0 }}", "[[1,2], [3,4]]", "3");
+}
+
+nutest_result template_func_index_mixed(void) {
+    return assert_eval_data("{{ index . \"z\" 2 }}", "{\"z\":[3,2,false]}", "false");
+}
+
 nutest_result template_func_if_arg(void) {
     return assert_eval_null("{{ if not false -}} yes {{- end }}", "yes");
 }
@@ -626,6 +658,14 @@ int main() {
     nutest_register(template_func_len_num);
     nutest_register(template_func_print);
     nutest_register(template_func_println);
+    nutest_register(template_func_index_no_arg);
+    nutest_register(template_func_index_single_arg);
+    nutest_register(template_func_index_invalid_type);
+    nutest_register(template_func_index_simple_obj);
+    nutest_register(template_func_index_nested_obj);
+    nutest_register(template_func_index_simple_arr);
+    nutest_register(template_func_index_nested_arr);
+    nutest_register(template_func_index_mixed);
     nutest_register(template_func_if_arg);
     nutest_register(template_func_with_arg);
     nutest_register(template_parenthesis_val);

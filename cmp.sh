@@ -196,6 +196,16 @@ testcase '{{ print }}' 'null'
 testcase '{{ println . }}' '789'
 testcase '{{ println }}' 'null'
 testcase '{{ $s := println 924 }} {{ $s }}' 'null'
+testcase '{{ index }}' 'null'
+testcase '{{ index 9 }}' 'null'
+testcase '{{ index 9 "c" }}' 'null'
+testcase '{{ index . }}' '{"a": {"b": "c"}}'
+testcase '{{ index . "a" }}' '{"a": {"b": "c"}}'
+testcase '{{ index . "a" true }}' '{"a": {"b": "c"}}'
+testcase '{{ index . "a" "b" }}' '{"a": {"b": "c"}}'
+testcase '{{ index . 3 }}' '[1,2,3,4,5,6]'
+testcase '{{ index . 1 5 }}' '[false, [1,2,3,4,5,6,7,8]]'
+testcase '{{ index . "f" 0 }}' '{"f": [1,2,3,4]}'
 
 if [ $FAILS -ne 0 ]; then
     printf "\nencountered %d failures\n" $FAILS

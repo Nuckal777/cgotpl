@@ -27,6 +27,7 @@
 "or"
 "len"
 "println"
+"index"
 
 "\\b"
 "\\f"

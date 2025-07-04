@@ -1773,6 +1773,8 @@ int template_dispatch_func(stream* in, state* state, tracked_value* piped, track
         err = func_print(&iter, result);
     } else if (strcmp(func_name, "println") == 0) {
         err = func_println(&iter, result);
+    } else if (strcmp(func_name, "index") == 0) {
+        err = func_index(&iter, result);
     }
     if (err != 0) {
         goto cleanup;

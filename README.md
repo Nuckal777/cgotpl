@@ -111,15 +111,15 @@ Syntactical issues in non-executed branches may not lead to an error.
 | and      | :white_check_mark: |
 | call     | :x:                |
 | html     | :x:                |
-| index    | :x:                |
+| index    | :white_check_mark: |
 | slice    | :x:                |
 | js       | :x:                |
 | len      | :white_check_mark: |
 | not      | :white_check_mark: |
 | or       | :white_check_mark: |
-| print    | :x:                |
+| print    | :white_check_mark: |
 | printf   | :x:                |
-| println  | :x:                |
+| println  | :white_check_mark: |
 | urlquery | :x:                |
 
 The c and go standard library may disagree on certain formatting (`printf`) corner-cases.

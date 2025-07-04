@@ -1,9 +1,9 @@
 #include "func.h"
 
 #include <assert.h>
+#include <math.h>
 #include <stdbool.h>
 #include <stddef.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -264,5 +264,83 @@ int func_println(template_arg_iter* iter, tracked_value* out) {
     out->is_heap = true;
     out->val.ty = JSON_TY_STRING;
     out->val.inner.str = b.data;
+    return 0;
+}
+
+// This function can trigger use-after-frees, if the tracked_value passed
+// as first argument has `is_heap = true`. In the current implementation
+// via the template it is not possible to construct a tracked_value with
+// `is_heap = false` of JSON_TY_OBJECT or JSON_TY_ARRAY, so this case
+// cannot occur.
+int func_index(template_arg_iter* iter, tracked_value* out) {
+    size_t args_len = template_arg_iter_len(iter);
+    if (args_len == 0) {
+        return ERR_FUNC_INVALID_ARG_LEN;
+    }
+    tracked_value val = TRACKED_NULL;
+    int err = template_arg_iter_next(iter, &val);
+    if (err != 0) {
+        return err;
+    }
+    if (args_len == 1) {
+        *out = val;
+        return 0;
+    }
+    json_value* sub = &val.val;
+    for (size_t i = 1; i < args_len; i++) {
+        tracked_value arg = TRACKED_NULL;
+        switch (sub->ty) {
+            case JSON_TY_OBJECT:
+                err = template_arg_iter_next(iter, &arg);
+                if (err != 0) {
+                    tracked_value_free(&val);
+                    return err;
+                }
+                if (arg.val.ty != JSON_TY_STRING) {
+                    tracked_value_free(&arg);
+                    tracked_value_free(&val);
+                    return ERR_FUNC_INVALID_ARG_TYPE;
+                }
+                int found = hashmap_get(&sub->inner.obj, arg.val.inner.str, (const void**)&sub);
+                if (!found) {
+                    tracked_value_free(&arg);
+                    tracked_value_free(&val);
+                    return ERR_FUNC_INDEX_NOT_FOUND;
+                }
+                break;
+            case JSON_TY_ARRAY:
+                err = template_arg_iter_next(iter, &arg);
+                if (err != 0) {
+                    tracked_value_free(&val);
+                    return err;
+                }
+                if (arg.val.ty != JSON_TY_NUMBER) {
+                    tracked_value_free(&arg);
+                    tracked_value_free(&val);
+                    return ERR_FUNC_INVALID_ARG_TYPE;
+                }
+                double num = arg.val.inner.num;
+                if (num < 0 || trunc(num) != num) {
+                    tracked_value_free(&arg);
+                    tracked_value_free(&val);
+                    return ERR_FUNC_INDEX_NOT_FOUND;
+                }
+                size_t idx = (size_t)num;
+                json_array* arr = &sub->inner.arr;
+                if (idx >= arr->len) {
+                    tracked_value_free(&arg);
+                    tracked_value_free(&val);
+                    return ERR_FUNC_INDEX_NOT_FOUND;
+                }
+                sub = arr->data + idx;
+                break;
+            default:
+                tracked_value_free(&val);
+                return ERR_FUNC_INVALID_ARG_TYPE;
+        }
+    }
+    out->val = *sub;
+    out->is_heap = false;
+    tracked_value_free(&val);
     return 0;
 }
