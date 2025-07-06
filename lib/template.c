@@ -1288,9 +1288,7 @@ bool value_iter_next(value_iter* iter, value_iter_out* out) {
             char* key = iter->keys[iter->count];
             out->key.inner.str = key;
             json_value* val;
-            if (!hashmap_get(iter->inner.obj, key, (const void**)&val)) {
-                assert("key removed from hashmap during iteration");
-            }
+            assert(hashmap_get(iter->inner.obj, key, (const void**)&val));
             out->val = *val;
             iter->count++;
             return true;
