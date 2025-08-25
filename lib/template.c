@@ -140,7 +140,6 @@ typedef struct {
     hashmap define_locs;
     int return_reason;
     char ident[STATE_IDENT_CAP];
-    bool eval_define;
 } state;
 
 int template_skip_whitespace(stream* in) {
@@ -879,7 +878,7 @@ int template_parse_noop_ident(stream* in, state* state, char leading) {
     return ERR_BUF_OVERFLOW;
 }
 
-int template_pipeline_noop(stream* in, state* state, size_t* depth) {
+int template_pipeline_noop(stream* in, state* state, size_t* depth, bool eval_define) {
     unsigned char cp[4];
     size_t cp_len;
     int err = stream_next_utf8_cp(in, cp, &cp_len);
@@ -950,7 +949,7 @@ int template_pipeline_noop(stream* in, state* state, size_t* depth) {
                     }
                     (*depth)++;
                 } else if (strcmp("define", state->ident) == 0) {
-                    if (state->eval_define) {
+                    if (eval_define) {
                         return ERR_TEMPLATE_DEFINE_NESTED;
                     }
                     if (ident_count > 0) {
@@ -981,7 +980,7 @@ int template_pipeline_noop(stream* in, state* state, size_t* depth) {
     }
 }
 
-int template_noop(stream* in, state* state) {
+int template_noop(stream* in, state* state, bool eval_define) {
     unsigned char cp[4];
     size_t cp_len;
     size_t depth = 0;
@@ -1001,7 +1000,7 @@ int template_noop(stream* in, state* state) {
         if (cp[0] != '{') {
             continue;
         }
-        err = template_pipeline_noop(in, state, &depth);
+        err = template_pipeline_noop(in, state, &depth, eval_define);
         if (err != 0) {
             return err;
         }
@@ -1033,7 +1032,7 @@ int template_if(stream* in, state* state) {
         }
         bool cond_empty = is_empty(&cond.val);
         if (cond_empty || any_branch) {
-            err = template_noop(in, state);
+            err = template_noop(in, state, false);
         } else {
             any_branch = true;
             err = template_plain(in, state);
@@ -1072,7 +1071,7 @@ int template_if(stream* in, state* state) {
         return err;
     }
     if (any_branch) {
-        err = template_noop(in, state);
+        err = template_noop(in, state, false);
     } else {
         stack_push_frame(&state->stack);
         err = template_plain(in, state);
@@ -1334,7 +1333,7 @@ int template_range(stream* in, state* state) {
         if (err != 0) {
             goto clean_pop1;
         }
-        err = template_noop(in, state);
+        err = template_noop(in, state, false);
         if (err != 0) {
             goto clean_pop1;
         }
@@ -1408,7 +1407,7 @@ int template_range(stream* in, state* state) {
     if (err != 0) {
         goto cleanup;
     }
-    err = template_noop(in, state);
+    err = template_noop(in, state, false);
     if (err != 0) {
         goto cleanup;
     }
@@ -1422,7 +1421,7 @@ int template_range(stream* in, state* state) {
     if (err != 0) {
         goto cleanup;
     }
-    err = template_noop(in, state);
+    err = template_noop(in, state, false);
     if (err != 0) {
         goto cleanup;
     }
@@ -1467,7 +1466,7 @@ int template_with(stream* in, state* state) {
         }
         bool arg_empty = is_empty(&arg.val);
         if (arg_empty) {
-            err = template_noop(in, state);
+            err = template_noop(in, state, false);
         } else {
             // Add another stack frame in case arg originates from the stack
             // but is reassigned in the body causing a double-free, e.g.
@@ -1515,7 +1514,7 @@ int template_with(stream* in, state* state) {
         return err;
     }
     if (any_branch) {
-        err = template_noop(in, state);
+        err = template_noop(in, state, false);
     } else {
         stack_push_frame(&state->stack);
         err = template_plain(in, state);
@@ -1567,9 +1566,7 @@ int template_define(stream* in, state* state) {
     if (err != 0) {
         goto cleanup;
     }
-    state->eval_define = true;
-    err = template_noop(in, state);
-    state->eval_define = false;
+    err = template_noop(in, state, true);
     if (err != 0) {
         goto cleanup;
     }
@@ -1590,7 +1587,6 @@ cleanup:
     return err;
 }
 
-// TODO: do we need to allocate a new stack?
 int template_template(stream* in, state* state) {
     unsigned char cp[4];
     size_t cp_len;
@@ -1626,7 +1622,6 @@ int template_template(stream* in, state* state) {
     if (err != 0) {
         goto cleanup;
     }
-    json_value nothing = JSON_NULL;
     long current_pos;
     err = stream_pos(in, &current_pos);
     if (err != 0) {
@@ -1649,16 +1644,17 @@ int template_template(stream* in, state* state) {
     stack_pop_frame(&state->stack);
     stack_free(&state->stack);
     state->stack = current_stack;
+    state->dot = current_dot;
     if (err != 0) {
         tracked_value_free(&arg);
         goto cleanup;
     }
     if (state->return_reason != RETURN_REASON_END) {
         err = ERR_TEMPLATE_INVALID_SYNTAX;
+        tracked_value_free(&arg);
         goto cleanup;
     }
     state->return_reason = RETURN_REASON_REGULAR;
-    state->dot = current_dot;
     err = stream_set_pos(in, current_pos);
     if (err != 0) {
         tracked_value_free(&arg);
@@ -1666,9 +1662,7 @@ int template_template(stream* in, state* state) {
     }
     tracked_value_free(&arg);
 cleanup:
-    if (err != 0) {
-        free(name);
-    }
+    free(name);
     return err;
 }
 
@@ -2189,17 +2183,13 @@ int template_eval_stream(stream* in, json_value* dot, char** out) {
     state.out_nospace = 0;
     state.range_depth = 0;
     state.return_reason = RETURN_REASON_REGULAR;
-    state.eval_define = false;
     hashmap_new(&state.define_locs, hashmap_strcmp, hashmap_strlen, HASH_FUNC_DJB2);
     stack_new(&state.stack);
     stack_push_frame(&state.stack);
     int err = stack_set_ref(&state.stack, "", dot);
     if (err) {
         stack_pop_frame(&state.stack);
-        stack_free(&state.stack);
-        hashmap_iter(&state.define_locs, NULL, define_loc_free);
-        hashmap_free(&state.define_locs);
-        return err;
+        goto cleanup;
     }
     buf_init(&state.out);
     err = template_plain(in, &state);
@@ -2210,6 +2200,7 @@ int template_eval_stream(stream* in, json_value* dot, char** out) {
     }
     buf_append(&state.out, "", 1);
     *out = state.out.data;
+cleanup:
     stack_free(&state.stack);
     hashmap_iter(&state.define_locs, NULL, define_loc_free);
     hashmap_free(&state.define_locs);

@@ -307,6 +307,7 @@ int func_index(template_arg_iter* iter, tracked_value* out) {
                     tracked_value_free(&val);
                     return ERR_FUNC_INDEX_NOT_FOUND;
                 }
+                tracked_value_free(&arg);
                 break;
             case JSON_TY_ARRAY:
                 err = template_arg_iter_next(iter, &arg);
@@ -333,6 +334,7 @@ int func_index(template_arg_iter* iter, tracked_value* out) {
                     return ERR_FUNC_INDEX_NOT_FOUND;
                 }
                 sub = arr->data + idx;
+                tracked_value_free(&arg);
                 break;
             default:
                 tracked_value_free(&val);
