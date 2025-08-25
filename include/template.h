@@ -18,6 +18,8 @@
 #define ERR_TEMPLATE_VAR_UNKNOWN -911
 #define ERR_TEMPLATE_NO_MUTATION -912
 #define ERR_TEMPLATE_UNEXPECTED_EOF -913
+#define ERR_TEMPLATE_DEFINE_UNKNOWN -914
+#define ERR_TEMPLATE_DEFINE_NESTED -915
 
 // in is a pointer to a stream, which may be read to the end. dot is
 // the inital dot value. out will be filled with the result of templating

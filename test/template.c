@@ -557,6 +557,30 @@ nutest_result template_loop_null_name(void) {
     return NUTEST_PASS;
 }
 
+nutest_result template_define_invoke(void) {
+    return assert_eval_null("{{ define `x` -}} kek {{- end }}{{ template `x` . }}e", "keke");
+}
+
+nutest_result template_define_change_dot(void) {
+    return assert_eval_null("{{ define `y` }}{{.}}{{end}}{{ template `y` 8 }}", "8");
+}
+
+nutest_result template_define_no_name(void) {
+    return assert_eval_err("{{ define }}abc{{ end }}", ERR_TEMPLATE_INVALID_SYNTAX);
+}
+
+nutest_result template_define_nested(void) {
+    return assert_eval_err("{{ define `a` }}{{ define `b` }}c{{ end }}{{ end }}{{ template `a` `` }}", ERR_TEMPLATE_DEFINE_NESTED);
+}
+
+nutest_result template_template_no_val(void) {
+    return assert_eval_err("{{ define `cba` }}zyx{{ end }}{{ template `cba` }}", ERR_TEMPLATE_NO_VALUE);
+}
+
+nutest_result template_template_unknown(void) {
+    return assert_eval_err("{{ template `unknown` . }}", ERR_TEMPLATE_DEFINE_UNKNOWN);
+}
+
 int main() {
     nutest_register(template_identity);
     nutest_register(template_empty_pipeline);
@@ -680,5 +704,11 @@ int main() {
     nutest_register(template_pipe_invalid_args);
     nutest_register(template_pipe_var_def);
     nutest_register(template_pipe_piped_var);
+    nutest_register(template_define_invoke);
+    nutest_register(template_define_change_dot);
+    nutest_register(template_define_no_name);
+    nutest_register(template_define_nested);
+    nutest_register(template_template_no_val);
+    nutest_register(template_template_unknown);
     return nutest_run();
 }

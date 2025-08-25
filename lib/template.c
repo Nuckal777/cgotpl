@@ -137,8 +137,10 @@ typedef struct {
     size_t out_nospace;
     size_t range_depth;
     stack stack;
+    hashmap define_locs;
     int return_reason;
     char ident[STATE_IDENT_CAP];
+    bool eval_define;
 } state;
 
 int template_skip_whitespace(stream* in) {
@@ -947,6 +949,14 @@ int template_pipeline_noop(stream* in, state* state, size_t* depth) {
                         return ERR_TEMPLATE_INVALID_SYNTAX;
                     }
                     (*depth)++;
+                } else if (strcmp("define", state->ident) == 0) {
+                    if (state->eval_define) {
+                        return ERR_TEMPLATE_DEFINE_NESTED;
+                    }
+                    if (ident_count > 0) {
+                        return ERR_TEMPLATE_INVALID_SYNTAX;
+                    }
+                    (*depth)++;
                 } else if (strcmp("end", state->ident) == 0) {
                     if (ident_count > 0) {
                         return ERR_TEMPLATE_INVALID_SYNTAX;
@@ -1523,6 +1533,145 @@ int template_with(stream* in, state* state) {
     return 0;
 }
 
+int template_define(stream* in, state* state) {
+    unsigned char cp[4];
+    size_t cp_len;
+    int err = template_next_nonspace(in, cp, &cp_len);
+    if (err != 0) {
+        return err;
+    }
+    if (cp_len != 1) {
+        return ERR_TEMPLATE_INVALID_SYNTAX;
+    }
+    char* name;
+    switch (cp[0]) {
+        case '"':
+            err = template_parse_regular_str(in, &name);
+            break;
+        case '`':
+            err = template_parse_backtick_str(in, &name);
+            break;
+        default:
+            return ERR_TEMPLATE_INVALID_SYNTAX;
+    }
+    if (err != 0) {
+        return err;
+    }
+    json_value nothing = JSON_NULL;
+    err = template_end_pipeline(in, state, &nothing);
+    if (err != 0) {
+        goto cleanup;
+    }
+    long pos;
+    err = stream_pos(in, &pos);
+    if (err != 0) {
+        goto cleanup;
+    }
+    state->eval_define = true;
+    err = template_noop(in, state);
+    state->eval_define = false;
+    if (err != 0) {
+        goto cleanup;
+    }
+    if (state->return_reason != RETURN_REASON_END) {
+        err = ERR_TEMPLATE_INVALID_SYNTAX;
+        goto cleanup;
+    }
+    state->return_reason = RETURN_REASON_REGULAR;
+    assert(sizeof(long) == sizeof(void*));
+    entry previous = hashmap_insert(&state->define_locs, name, (void*)pos);
+    if (previous.exists) {
+        free(previous.key);
+    }
+cleanup:
+    if (err != 0) {
+        free(name);
+    }
+    return err;
+}
+
+// TODO: do we need to allocate a new stack?
+int template_template(stream* in, state* state) {
+    unsigned char cp[4];
+    size_t cp_len;
+    int err = template_next_nonspace(in, cp, &cp_len);
+    if (err != 0) {
+        return err;
+    }
+    if (cp_len != 1) {
+        return ERR_TEMPLATE_INVALID_SYNTAX;
+    }
+    char* name;
+    switch (cp[0]) {
+        case '"':
+            err = template_parse_regular_str(in, &name);
+            break;
+        case '`':
+            err = template_parse_backtick_str(in, &name);
+            break;
+        default:
+            return ERR_TEMPLATE_INVALID_SYNTAX;
+    }
+    if (err != 0) {
+        return err;
+    }
+    long define_pos;
+    int found = hashmap_get(&state->define_locs, name, (const void**)&define_pos);
+    if (!found) {
+        err = ERR_TEMPLATE_DEFINE_UNKNOWN;
+        goto cleanup;
+    }
+    tracked_value arg = TRACKED_NULL;
+    err = template_parse_expr(in, state, &arg, 0);
+    if (err != 0) {
+        goto cleanup;
+    }
+    json_value nothing = JSON_NULL;
+    long current_pos;
+    err = stream_pos(in, &current_pos);
+    if (err != 0) {
+        tracked_value_free(&arg);
+        goto cleanup;
+    }
+    err = stream_set_pos(in, define_pos);
+    if (err != 0) {
+        tracked_value_free(&arg);
+        goto cleanup;
+    }
+    json_value* current_dot = state->dot;
+    state->dot = &arg.val;
+    stack current_stack = state->stack;
+    stack_new(&state->stack);
+    stack_push_frame(&state->stack);
+    stack_push_frame(&state->stack);
+    err = template_plain(in, state);
+    stack_pop_frame(&state->stack);
+    stack_pop_frame(&state->stack);
+    stack_free(&state->stack);
+    state->stack = current_stack;
+    if (err != 0) {
+        tracked_value_free(&arg);
+        goto cleanup;
+    }
+    if (state->return_reason != RETURN_REASON_END) {
+        err = ERR_TEMPLATE_INVALID_SYNTAX;
+        goto cleanup;
+    }
+    state->return_reason = RETURN_REASON_REGULAR;
+    state->dot = current_dot;
+    err = stream_set_pos(in, current_pos);
+    if (err != 0) {
+        tracked_value_free(&arg);
+        goto cleanup;
+    }
+    tracked_value_free(&arg);
+cleanup:
+    if (err != 0) {
+        free(name);
+    }
+    return err;
+}
+
 #ifdef FUZZING_BUILD_MODE
 #define RANGE_DEPTH_MAX 3
 #else
@@ -1555,6 +1704,20 @@ int template_dispatch_keyword(stream* in, state* state) {
     }
     if (strcmp("with", state->ident) == 0) {
         err = template_with(in, state);
+        if (err == EOF) {
+            return ERR_TEMPLATE_UNEXPECTED_EOF;
+        }
+        return err;
+    }
+    if (strcmp("define", state->ident) == 0) {
+        err = template_define(in, state);
+        if (err == EOF) {
+            return ERR_TEMPLATE_UNEXPECTED_EOF;
+        }
+        return err;
+    }
+    if (strcmp("template", state->ident) == 0) {
+        err = template_template(in, state);
         if (err == EOF) {
             return ERR_TEMPLATE_UNEXPECTED_EOF;
         }
@@ -2016,18 +2179,26 @@ int template_plain(stream* in, state* state) {
     }
 }
 
+void define_loc_free(entry* e, void* userdata) {
+    free(e->key);
+}
+
 int template_eval_stream(stream* in, json_value* dot, char** out) {
     state state;
     state.dot = dot;
     state.out_nospace = 0;
     state.range_depth = 0;
     state.return_reason = RETURN_REASON_REGULAR;
+    state.eval_define = false;
+    hashmap_new(&state.define_locs, hashmap_strcmp, hashmap_strlen, HASH_FUNC_DJB2);
     stack_new(&state.stack);
     stack_push_frame(&state.stack);
     int err = stack_set_ref(&state.stack, "", dot);
     if (err) {
         stack_pop_frame(&state.stack);
         stack_free(&state.stack);
+        hashmap_iter(&state.define_locs, NULL, define_loc_free);
+        hashmap_free(&state.define_locs);
         return err;
     }
     buf_init(&state.out);
@@ -2037,9 +2208,11 @@ int template_eval_stream(stream* in, json_value* dot, char** out) {
     if (err == EOF && state.stack.len == 0) {
         err = 0;
     }
-    buf_append(&state.out, "\0", 1);
+    buf_append(&state.out, "", 1);
     *out = state.out.data;
     stack_free(&state.stack);
+    hashmap_iter(&state.define_locs, NULL, define_loc_free);
+    hashmap_free(&state.define_locs);
     return err;
 }
 
