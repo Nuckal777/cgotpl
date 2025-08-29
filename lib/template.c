@@ -1756,7 +1756,7 @@ int template_dispatch_keyword(stream* in, state* state) {
 //   - value <space> => trivial
 //   - value <terminal> => seek back => the next invocation needs to see the terminal
 // both cases are entwined here
-// - depth == 0 is unreachable with an opening paren, causing everything to to skipped except except the last closing brace
+// - depth == 0 is unreachable with an opening paren, causing everything to to skipped except except the last closing paren
 int template_skip_expr(stream* in, long* start_pos) {
     unsigned char cp[4];
     size_t cp_len;
@@ -1854,10 +1854,31 @@ int template_skip_expr(stream* in, long* start_pos) {
 
 int template_eval_arg(stream* in, state* state, long where, tracked_value* result) {
     int err = stream_set_pos(in, where);
-    if (err != 0) {
+    if (err) {
         return err;
     }
-    return template_parse_expr(in, state, result, TEMPLATE_PARSE_EXPR_NO_PIPE);
+    err = template_parse_expr(in, state, result, TEMPLATE_PARSE_EXPR_NO_PIPE | TEMPLATE_PARSE_EXPR_NO_VAR_MUT);
+    if (err) {
+        return err;
+    }
+    // check that the next char is something template_skip_expr() would split at
+    // to ensure that the arg was fully consumed, without such a check stuff like
+    // '$#' would return '$' due to the '#' never being read and hence not producing
+    // an ERR_TEMPLATE_INVALID_SYNTAX.
+    unsigned char cp[4];
+    size_t cp_len;
+    // no need to seek back as template_dispatch_func does that
+    err = stream_next_utf8_cp(in, cp, &cp_len);
+    if (err) {
+        return err;
+    }
+    if (cp_len != 1) {
+        return ERR_TEMPLATE_INVALID_SYNTAX;
+    }
+    if (isspace(cp[0]) || cp[0] == ')' || cp[0] == '}' || cp[0] == '|') {
+        return 0;
+    }
+    return ERR_TEMPLATE_INVALID_SYNTAX;
 }
 
 int template_arg_iter_next(template_arg_iter* iter, tracked_value* result) {

@@ -496,6 +496,10 @@ nutest_result template_func_with_arg(void) {
     return assert_eval_null("{{ with not false }}{{ . }}{{ end }}", "true");
 }
 
+nutest_result template_func_arg_invalid_name(void) {
+    return assert_eval_err("{{ not $# }}", ERR_TEMPLATE_INVALID_SYNTAX);
+}
+
 nutest_result template_parenthesis_val(void) {
     return assert_eval_null("{{ (45) }}", "45");
 }
@@ -692,6 +696,7 @@ int main() {
     nutest_register(template_func_index_mixed);
     nutest_register(template_func_if_arg);
     nutest_register(template_func_with_arg);
+    nutest_register(template_func_arg_invalid_name);
     nutest_register(template_parenthesis_val);
     nutest_register(template_parenthesis_no_val);
     nutest_register(template_parenthesis_no_close);
