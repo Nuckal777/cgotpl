@@ -91,9 +91,9 @@ Most templating features, besides sub-templates, are implemented.
 | `{{range pipeline}} T1 {{else}} T0 {{end}}`   | :white_check_mark:                                 |
 | `{{break}}`                                   | :white_check_mark:                                 |
 | `{{continue}}`                                | :white_check_mark:                                 |
-| `{{define}}`                                  | :x:                                                |
-| `{{template "name" pipeline}}`                | :x:                                                |
-| `{{block "name" pipeline}} T1 {{end}}`        | :x:                                                |
+| `{{define}}`                                  | :white_check_mark:                                 |
+| `{{template "name" pipeline}}`                | :white_check_mark:                                 |
+| `{{block "name" pipeline}} T1 {{end}}`        | :white_check_mark:                                 |
 | `{{with pipeline}} T1 {{end}}`                | :white_check_mark:                                 |
 | Field access `.a.b.c`                         | :white_check_mark:                                 |
 | Variables `$a := 1337`                        | :white_check_mark:                                 |

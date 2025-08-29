@@ -140,6 +140,7 @@ typedef struct {
     hashmap define_locs;
     int return_reason;
     char ident[STATE_IDENT_CAP];
+    bool eval_block;
 } state;
 
 int template_skip_whitespace(stream* in) {
@@ -878,6 +879,179 @@ int template_parse_noop_ident(stream* in, state* state, char leading) {
     return ERR_BUF_OVERFLOW;
 }
 
+int template_parse_define_name(stream* in, char** name) {
+    unsigned char cp[4];
+    size_t cp_len;
+    int err = template_next_nonspace(in, cp, &cp_len);
+    if (err != 0) {
+        return err;
+    }
+    if (cp_len != 1) {
+        return ERR_TEMPLATE_INVALID_SYNTAX;
+    }
+    switch (cp[0]) {
+        case '"':
+            err = template_parse_regular_str(in, name);
+            break;
+        case '`':
+            err = template_parse_backtick_str(in, name);
+            break;
+        default:
+            return ERR_TEMPLATE_INVALID_SYNTAX;
+    }
+    return err;
+}
+
+// 2 cases:
+// - opening parenthesis => skip everything, consuming closing parenthesis => done
+// - no paranthesis (any space, brace, paren, pipe is terminal)
+//   - value <space> => trivial
+//   - value <terminal> => seek back => the next invocation needs to see the terminal
+// both cases are entwined here
+// - depth == 0 is unreachable with an opening paren, causing everything to to skipped except except the last closing paren
+int template_skip_expr(stream* in, long* start_pos) {
+    unsigned char cp[4];
+    size_t cp_len;
+    int err = template_next_nonspace(in, cp, &cp_len);
+    if (err != 0) {
+        return err;
+    }
+    err = stream_pos(in, start_pos);
+    if (err != 0) {
+        return err;
+    }
+    (*start_pos) -= cp_len;
+    size_t depth = 0;
+    bool opening_paren = false;
+    if (cp_len == 1) {
+        if (cp[0] == ')' || cp[0] == '}' || cp[0] == '|') {
+            return ERR_TEMPLATE_NO_VALUE;
+        }
+        if (cp[0] == '"') {
+            char* str;
+            err = template_parse_regular_str(in, &str);
+            if (err != 0) {
+                return err;
+            }
+            free(str);
+            return 0;
+        }
+        if (cp[0] == '`') {
+            char* str;
+            err = template_parse_backtick_str(in, &str);
+            if (err != 0) {
+                return err;
+            }
+            free(str);
+            return 0;
+        }
+        if (cp[0] == '(') {
+            opening_paren = true;
+            depth++;
+        }
+    }
+    while (true) {
+        int err = stream_next_utf8_cp(in, cp, &cp_len);
+        if (err != 0) {
+            return err;
+        }
+        if (cp_len != 1) {
+            continue;
+        }
+        if (depth == 0) {
+            if (isspace(cp[0])) {
+                return 0;
+            }
+            if (cp[0] == '"' || cp[0] == '`') {
+                return ERR_TEMPLATE_INVALID_SYNTAX;
+            }
+            if (cp[0] == ')' || cp[0] == '|') {
+                return stream_seek(in, -cp_len);
+            }
+        }
+        if (cp[0] == ')') {
+            if (opening_paren && depth == 1) {
+                return 0;
+            }
+            depth--;
+            continue;
+        }
+        if (cp[0] == '}') {
+            return ERR_TEMPLATE_NO_VALUE;
+        }
+        if (cp[0] == '"') {
+            char* str;
+            err = template_parse_regular_str(in, &str);
+            if (err != 0) {
+                return err;
+            }
+            free(str);
+            continue;
+        }
+        if (cp[0] == '`') {
+            char* str;
+            err = template_parse_backtick_str(in, &str);
+            if (err != 0) {
+                return err;
+            }
+            free(str);
+            continue;
+        }
+        if (cp[0] == '(') {
+            depth++;
+            continue;
+        }
+    }
+}
+
+int template_pipeline_noop_register_block(stream* in, state* state) {
+    char* name;
+    int err = template_parse_define_name(in, &name);
+    if (err) {
+        return err;
+    }
+    unsigned char cp[4];
+    size_t cp_len;
+    err = template_skip_whitespace(in);
+    if (err) {
+        goto cleanup;
+    }
+    long discard;
+    err = template_skip_expr(in, &discard);
+    if (err) {
+        goto cleanup;
+    }
+    long pre_end;
+    err = stream_pos(in, &pre_end);
+    if (err) {
+        goto cleanup;
+    }
+    json_value nothing = JSON_NULL;
+    err = template_end_pipeline(in, state, &nothing);
+    if (err) {
+        goto cleanup;
+    }
+    long pos;
+    err = stream_pos(in, &pos);
+    if (err) {
+        goto cleanup;
+    }
+    assert(sizeof(long) == sizeof(void*));
+    entry previous = hashmap_insert(&state->define_locs, name, (void*)pos);
+    if (previous.exists) {
+        free(previous.key);
+    }
+    err = stream_set_pos(in, pre_end);
+    if (err) {
+        return err;
+    }
+cleanup:
+    if (err) {
+        free(name);
+    }
+    return err;
+}
+
 int template_pipeline_noop(stream* in, state* state, size_t* depth, bool eval_define) {
     unsigned char cp[4];
     size_t cp_len;
@@ -944,6 +1118,15 @@ int template_pipeline_noop(stream* in, state* state, size_t* depth, bool eval_de
                     return err;
                 }
                 if (strcmp("if", state->ident) == 0 || strcmp("range", state->ident) == 0 || strcmp("with", state->ident) == 0) {
+                    if (ident_count > 0) {
+                        return ERR_TEMPLATE_INVALID_SYNTAX;
+                    }
+                    (*depth)++;
+                } else if (strcmp("block", state->ident) == 0) {
+                    err = template_pipeline_noop_register_block(in, state);
+                    if (err) {
+                        return err;
+                    }
                     if (ident_count > 0) {
                         return ERR_TEMPLATE_INVALID_SYNTAX;
                     }
@@ -1533,27 +1716,12 @@ int template_with(stream* in, state* state) {
 }
 
 int template_define(stream* in, state* state) {
-    unsigned char cp[4];
-    size_t cp_len;
-    int err = template_next_nonspace(in, cp, &cp_len);
-    if (err != 0) {
-        return err;
-    }
-    if (cp_len != 1) {
-        return ERR_TEMPLATE_INVALID_SYNTAX;
+    if (state->eval_block) {
+        return ERR_TEMPLATE_DEFINE_NESTED;
     }
     char* name;
-    switch (cp[0]) {
-        case '"':
-            err = template_parse_regular_str(in, &name);
-            break;
-        case '`':
-            err = template_parse_backtick_str(in, &name);
-            break;
-        default:
-            return ERR_TEMPLATE_INVALID_SYNTAX;
-    }
-    if (err != 0) {
+    int err = template_parse_define_name(in, &name);
+    if (err) {
         return err;
     }
     json_value nothing = JSON_NULL;
@@ -1587,28 +1755,26 @@ cleanup:
     return err;
 }
 
+int template_run_nested(stream* in, state* state, json_value* new_dot) {
+    json_value* current_dot = state->dot;
+    state->dot = new_dot;
+    stack current_stack = state->stack;
+    stack_new(&state->stack);
+    stack_push_frame(&state->stack);
+    stack_push_frame(&state->stack);
+    int err = template_plain(in, state);
+    stack_pop_frame(&state->stack);
+    stack_pop_frame(&state->stack);
+    stack_free(&state->stack);
+    state->stack = current_stack;
+    state->dot = current_dot;
+    return err;
+}
+
 int template_template(stream* in, state* state) {
-    unsigned char cp[4];
-    size_t cp_len;
-    int err = template_next_nonspace(in, cp, &cp_len);
-    if (err != 0) {
-        return err;
-    }
-    if (cp_len != 1) {
-        return ERR_TEMPLATE_INVALID_SYNTAX;
-    }
     char* name;
-    switch (cp[0]) {
-        case '"':
-            err = template_parse_regular_str(in, &name);
-            break;
-        case '`':
-            err = template_parse_backtick_str(in, &name);
-            break;
-        default:
-            return ERR_TEMPLATE_INVALID_SYNTAX;
-    }
-    if (err != 0) {
+    int err = template_parse_define_name(in, &name);
+    if (err) {
         return err;
     }
     long define_pos;
@@ -1633,18 +1799,7 @@ int template_template(stream* in, state* state) {
         tracked_value_free(&arg);
         goto cleanup;
     }
-    json_value* current_dot = state->dot;
-    state->dot = &arg.val;
-    stack current_stack = state->stack;
-    stack_new(&state->stack);
-    stack_push_frame(&state->stack);
-    stack_push_frame(&state->stack);
-    err = template_plain(in, state);
-    stack_pop_frame(&state->stack);
-    stack_pop_frame(&state->stack);
-    stack_free(&state->stack);
-    state->stack = current_stack;
-    state->dot = current_dot;
+    err = template_run_nested(in, state, &arg.val);
     if (err != 0) {
         tracked_value_free(&arg);
         goto cleanup;
@@ -1663,6 +1818,55 @@ int template_template(stream* in, state* state) {
     tracked_value_free(&arg);
 cleanup:
     free(name);
+    return err;
+}
+
+int template_block(stream* in, state* state) {
+    char* name;
+    int err = template_parse_define_name(in, &name);
+    if (err) {
+        return err;
+    }
+    tracked_value arg = TRACKED_NULL;
+    err = template_parse_expr(in, state, &arg, 0);
+    if (err) {
+        goto cleanup;
+    }
+    json_value nothing = JSON_NULL;
+    err = template_end_pipeline(in, state, &nothing);
+    if (err) {
+        tracked_value_free(&arg);
+        goto cleanup;
+    }
+    long pos;
+    err = stream_pos(in, &pos);
+    if (err) {
+        tracked_value_free(&arg);
+        goto cleanup;
+    }
+    state->eval_block = true;
+    err = template_run_nested(in, state, &arg.val);
+    state->eval_block = false;
+    if (err) {
+        tracked_value_free(&arg);
+        goto cleanup;
+    }
+    if (state->return_reason != RETURN_REASON_END) {
+        err = ERR_TEMPLATE_INVALID_SYNTAX;
+        tracked_value_free(&arg);
+        goto cleanup;
+    }
+    state->return_reason = RETURN_REASON_REGULAR;
+    assert(sizeof(long) == sizeof(void*));
+    entry previous = hashmap_insert(&state->define_locs, name, (void*)pos);
+    if (previous.exists) {
+        free(previous.key);
+    }
+    tracked_value_free(&arg);
+cleanup:
+    if (err) {
+        free(name);
+    }
     return err;
 }
 
@@ -1717,6 +1921,13 @@ int template_dispatch_keyword(stream* in, state* state) {
         }
         return err;
     }
+    if (strcmp("block", state->ident) == 0) {
+        err = template_block(in, state);
+        if (err == EOF) {
+            return ERR_TEMPLATE_UNEXPECTED_EOF;
+        }
+        return err;
+    }
     if (strcmp("end", state->ident) == 0) {
         // only used in the non-noop case
         // in the noop case template_noop
@@ -1746,110 +1957,6 @@ int template_dispatch_keyword(stream* in, state* state) {
         return 0;
     }
     return ERR_TEMPLATE_KEYWORD_UNKNOWN;
-}
-
-#define TEMPLATE_FUNC_ARGS_MAX 16
-
-// 2 cases:
-// - opening parenthesis => skip everything, consuming closing parenthesis => done
-// - no paranthesis (any space, brace, paren, pipe is terminal)
-//   - value <space> => trivial
-//   - value <terminal> => seek back => the next invocation needs to see the terminal
-// both cases are entwined here
-// - depth == 0 is unreachable with an opening paren, causing everything to to skipped except except the last closing paren
-int template_skip_expr(stream* in, long* start_pos) {
-    unsigned char cp[4];
-    size_t cp_len;
-    int err = template_next_nonspace(in, cp, &cp_len);
-    if (err != 0) {
-        return err;
-    }
-    err = stream_pos(in, start_pos);
-    if (err != 0) {
-        return err;
-    }
-    (*start_pos) -= cp_len;
-    size_t depth = 0;
-    bool opening_paren = false;
-    if (cp_len == 1) {
-        if (cp[0] == ')' || cp[0] == '}' || cp[0] == '|') {
-            return ERR_TEMPLATE_NO_VALUE;
-        }
-        if (cp[0] == '"') {
-            char* str;
-            err = template_parse_regular_str(in, &str);
-            if (err != 0) {
-                return err;
-            }
-            free(str);
-            return 0;
-        }
-        if (cp[0] == '`') {
-            char* str;
-            err = template_parse_backtick_str(in, &str);
-            if (err != 0) {
-                return err;
-            }
-            free(str);
-            return 0;
-        }
-        if (cp[0] == '(') {
-            opening_paren = true;
-            depth++;
-        }
-    }
-    while (true) {
-        int err = stream_next_utf8_cp(in, cp, &cp_len);
-        if (err != 0) {
-            return err;
-        }
-        if (cp_len != 1) {
-            continue;
-        }
-        if (depth == 0) {
-            if (isspace(cp[0])) {
-                return 0;
-            }
-            if (cp[0] == '"' || cp[0] == '`') {
-                return ERR_TEMPLATE_INVALID_SYNTAX;
-            }
-            if (cp[0] == ')' || cp[0] == '|') {
-                return stream_seek(in, -cp_len);
-            }
-        }
-        if (cp[0] == ')') {
-            if (opening_paren && depth == 1) {
-                return 0;
-            }
-            depth--;
-            continue;
-        }
-        if (cp[0] == '}') {
-            return ERR_TEMPLATE_NO_VALUE;
-        }
-        if (cp[0] == '"') {
-            char* str;
-            err = template_parse_regular_str(in, &str);
-            if (err != 0) {
-                return err;
-            }
-            free(str);
-            continue;
-        }
-        if (cp[0] == '`') {
-            char* str;
-            err = template_parse_backtick_str(in, &str);
-            if (err != 0) {
-                return err;
-            }
-            free(str);
-            continue;
-        }
-        if (cp[0] == '(') {
-            depth++;
-            continue;
-        }
-    }
 }
 
 int template_eval_arg(stream* in, state* state, long where, tracked_value* result) {
@@ -1902,6 +2009,8 @@ int template_arg_iter_next(template_arg_iter* iter, tracked_value* result) {
 int template_arg_iter_len(template_arg_iter* iter) {
     return iter->args_len + (iter->piped ? 1 : 0);
 }
+
+#define TEMPLATE_FUNC_ARGS_MAX 16
 
 int template_dispatch_func(stream* in, state* state, tracked_value* piped, tracked_value* result) {
     long args[TEMPLATE_FUNC_ARGS_MAX];
@@ -2204,6 +2313,7 @@ int template_eval_stream(stream* in, json_value* dot, char** out) {
     state.out_nospace = 0;
     state.range_depth = 0;
     state.return_reason = RETURN_REASON_REGULAR;
+    state.eval_block = false;
     hashmap_new(&state.define_locs, hashmap_strcmp, hashmap_strlen, HASH_FUNC_DJB2);
     stack_new(&state.stack);
     stack_push_frame(&state.stack);

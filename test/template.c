@@ -585,6 +585,26 @@ nutest_result template_template_unknown(void) {
     return assert_eval_err("{{ template `unknown` . }}", ERR_TEMPLATE_DEFINE_UNKNOWN);
 }
 
+nutest_result template_block_invoke(void) {
+    return assert_eval_null("{{ block `x` . -}} lol {{- end }}{{ template `x` . }}o", "lollolo");
+}
+
+nutest_result template_block_change_dot(void) {
+    return assert_eval_null("{{ block `y` 9 }}{{.}}{{end}}", "9");
+}
+
+nutest_result template_block_no_name(void) {
+    return assert_eval_err("{{ block }}abc{{ end }}", ERR_TEMPLATE_INVALID_SYNTAX);
+}
+
+nutest_result template_block_no_val(void) {
+    return assert_eval_err("{{ block `alpha` }}abc{{ end }}", ERR_TEMPLATE_NO_VALUE);
+}
+
+nutest_result template_block_non_executed(void) {
+    return assert_eval_null("{{ if false }}{{ block `x` . -}} lol {{- end }}{{ end }}{{ template `x` . }}o", "lolo");
+}
+
 int main() {
     nutest_register(template_identity);
     nutest_register(template_empty_pipeline);
@@ -715,5 +735,10 @@ int main() {
     nutest_register(template_define_nested);
     nutest_register(template_template_no_val);
     nutest_register(template_template_unknown);
+    nutest_register(template_block_invoke);
+    nutest_register(template_block_change_dot);
+    nutest_register(template_block_no_name);
+    nutest_register(template_block_no_val);
+    nutest_register(template_block_non_executed);
     return nutest_run();
 }

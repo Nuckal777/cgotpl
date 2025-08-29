@@ -226,6 +226,14 @@ testcase '{{ define "1" }}{{ define "2" }}a{{ end }}{{ end }}{{ template "1" . }
 testcase '{{ define "1" }}{{ define "2" }}a{{ end }}{{ end }}{{ template "2" . }}' 'null'
 testcase '{{ define "1" }}{{ define "2" }}a{{ end }}{{ end }}{{ template "1" . }}{{ template "2" . }}' 'null'
 testcase '{{ define "1" }}{{ define "2" }}a{{ end }}{{ end }}' 'null'
+testcase '{{ block "a" . }}kek{{ end }}{{ template "a" . }}' 'null'
+testcase '{{ block "1" . }}{{ block "2" . }}a{{ end }}{{ end }}{{ template "1" . }}' 'null'
+testcase '{{ define "1" }}{{ block "2" . }}a{{ end }}{{ end }}{{ template "1" . }}' 'null'
+testcase '{{ block "1" . }}{{ define "2" }}a{{ end }}{{ end }}{{ template "1" . }}' 'null'
+testcase '{{ block "1" . }}{{ block "2" . }}a{{ end }}{{ end }}{{ template "2" . }}' 'null'
+testcase '{{ define "1" }}{{ block "2" . }}a{{ end }}{{ end }}{{ template "2" . }}' 'null'
+testcase '{{ block "1" . }}{{ define "2" }}a{{ end }}{{ end }}{{ template "2" . }}' 'null'
+testcase '{{ if false }}{{ block "2" . }}a{{ end }}{{ end }}{{ template "2" . }}' 'null'
 
 if [ $FAILS -ne 0 ]; then
     printf "\nencountered %d failures\n" $FAILS
