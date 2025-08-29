@@ -1786,6 +1786,7 @@ int template_template(stream* in, state* state) {
     tracked_value arg = TRACKED_NULL;
     err = template_parse_expr(in, state, &arg, 0);
     if (err != 0) {
+        tracked_value_free(&arg);
         goto cleanup;
     }
     long current_pos;
@@ -1830,6 +1831,7 @@ int template_block(stream* in, state* state) {
     tracked_value arg = TRACKED_NULL;
     err = template_parse_expr(in, state, &arg, 0);
     if (err) {
+        tracked_value_free(&arg);
         goto cleanup;
     }
     json_value nothing = JSON_NULL;
