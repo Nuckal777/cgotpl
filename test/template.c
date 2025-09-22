@@ -605,6 +605,58 @@ nutest_result template_block_non_executed(void) {
     return assert_eval_null("{{ if false }}{{ block `x` . -}} lol {{- end }}{{ end }}{{ template `x` . }}o", "lolo");
 }
 
+nutest_result template_slice_str_single_idx(void) {
+    return assert_eval_null("{{ slice `zyx` 1 }}", "yx");
+}
+
+nutest_result template_slice_str_two_idx(void) {
+    return assert_eval_null("{{ slice `zyx` 1 2 }}", "y");
+}
+
+nutest_result template_slice_str_three_idx(void) {
+    return assert_eval_err("{{ slice `zyx` 1 2 3 }}", ERR_FUNC_INVALID_ARG_LEN);
+}
+
+nutest_result template_slice_arr_single_idx(void) {
+    return assert_eval_data("{{ slice . 2 }}", "[1,2,3,4]", "[3 4]");
+}
+
+nutest_result template_slice_arr_two_idx(void) {
+    return assert_eval_data("{{ slice . 2 3 }}", "[1,2,3,4]", "[3]");
+}
+
+nutest_result template_slice_arr_three_idx(void) {
+    return assert_eval_data("{{ slice . 2 3 4 }}", "[1,2,3,4]", "[3]");
+}
+
+nutest_result template_slice_single_arg(void) {
+    return assert_eval_err("{{ slice `hi` }}", ERR_FUNC_INVALID_ARG_LEN);
+}
+
+nutest_result template_slice_many_args(void) {
+    return assert_eval_err("{{ slice `hi` 0 1 2 3 4 5 6 }}", ERR_FUNC_INVALID_ARG_LEN);
+}
+
+nutest_result template_slice_negative_start(void) {
+    return assert_eval_err("{{ slice `hello` -3 }}", ERR_FUNC_INVALID_ARG_VAL);
+}
+
+nutest_result template_slice_negative_end(void) {
+    return assert_eval_err("{{ slice `hello` 2 -5 }}", ERR_FUNC_INVALID_ARG_VAL);
+}
+
+nutest_result template_slice_huge_start(void) {
+    return assert_eval_err("{{ slice `hello` 3333 }}", ERR_FUNC_INVALID_ARG_VAL);
+}
+
+nutest_result template_slice_huge_end(void) {
+    return assert_eval_err("{{ slice `hello` 2 555 }}", ERR_FUNC_INVALID_ARG_VAL);
+}
+
+nutest_result template_slice_start_greater_end(void) {
+    return assert_eval_err("{{ slice `hello` 4 2 }}", ERR_FUNC_INVALID_ARG_VAL);
+}
+
 int main() {
     nutest_register(template_identity);
     nutest_register(template_empty_pipeline);
@@ -740,5 +792,18 @@ int main() {
     nutest_register(template_block_no_name);
     nutest_register(template_block_no_val);
     nutest_register(template_block_non_executed);
+    nutest_register(template_slice_str_single_idx);
+    nutest_register(template_slice_str_two_idx);
+    nutest_register(template_slice_str_three_idx);
+    nutest_register(template_slice_arr_single_idx);
+    nutest_register(template_slice_arr_two_idx);
+    nutest_register(template_slice_arr_three_idx);
+    nutest_register(template_slice_single_arg);
+    nutest_register(template_slice_many_args);
+    nutest_register(template_slice_negative_start);
+    nutest_register(template_slice_negative_end);
+    nutest_register(template_slice_huge_start);
+    nutest_register(template_slice_huge_end);
+    nutest_register(template_slice_start_greater_end);
     return nutest_run();
 }

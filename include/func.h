@@ -42,7 +42,8 @@ typedef struct {
 
 #define ERR_FUNC_INVALID_ARG_LEN -1000
 #define ERR_FUNC_INVALID_ARG_TYPE -1001
-#define ERR_FUNC_INDEX_NOT_FOUND -1002
+#define ERR_FUNC_INVALID_ARG_VAL -1002
+#define ERR_FUNC_INDEX_NOT_FOUND -1003
 
 int template_arg_iter_next(template_arg_iter* iter, tracked_value* result);
 int template_arg_iter_len(template_arg_iter* iter);
@@ -55,5 +56,6 @@ int func_len(template_arg_iter* iter, tracked_value* out);
 int func_print(template_arg_iter* iter, tracked_value* out);
 int func_println(template_arg_iter* iter, tracked_value* out);
 int func_index(template_arg_iter* iter, tracked_value* out);
+int func_slice(template_arg_iter* iter, tracked_value* out);
 
 #endif

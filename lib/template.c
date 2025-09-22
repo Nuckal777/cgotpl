@@ -1410,6 +1410,8 @@ int value_iter_new(value_iter* iter, json_value* val) {
             iter->ty = JSON_TY_NUMBER;
             iter->count = 0;
             double num = val->inner.num;
+            // not using validate_index from func.c, because
+            // it is valid to iterate over negative integers
             if (trunc(num) != num) {
                 return ERR_TEMPLATE_NO_ITERABLE;
             }
@@ -2062,6 +2064,8 @@ int template_dispatch_func(stream* in, state* state, tracked_value* piped, track
         err = func_println(&iter, result);
     } else if (strcmp(func_name, "index") == 0) {
         err = func_index(&iter, result);
+    } else if (strcmp(func_name, "slice") == 0) {
+        err = func_slice(&iter, result);
     }
     if (err != 0) {
         goto cleanup;

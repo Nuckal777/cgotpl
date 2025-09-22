@@ -4,6 +4,7 @@
 #include <math.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -267,6 +268,18 @@ int func_println(template_arg_iter* iter, tracked_value* out) {
     return 0;
 }
 
+int validate_index(json_value* val, size_t* out) {
+    if (val->ty != JSON_TY_NUMBER) {
+        return ERR_FUNC_INVALID_ARG_TYPE;
+    }
+    double num = val->inner.num;
+    if (num < 0.0 || num > (double_t)SIZE_MAX || num != trunc(num)) {
+        return ERR_FUNC_INVALID_ARG_VAL;
+    }
+    *out = (size_t)num;
+    return 0;
+}
+
 // This function can trigger use-after-frees, if the tracked_value passed
 // as first argument has `is_heap = true`. In the current implementation
 // via the template it is not possible to construct a tracked_value with
@@ -315,18 +328,13 @@ int func_index(template_arg_iter* iter, tracked_value* out) {
                     tracked_value_free(&val);
                     return err;
                 }
-                if (arg.val.ty != JSON_TY_NUMBER) {
+                size_t idx;
+                err = validate_index(&arg.val, &idx);
+                if (err != 0) {
                     tracked_value_free(&arg);
                     tracked_value_free(&val);
-                    return ERR_FUNC_INVALID_ARG_TYPE;
+                    return err;
                 }
-                double num = arg.val.inner.num;
-                if (num < 0 || trunc(num) != num) {
-                    tracked_value_free(&arg);
-                    tracked_value_free(&val);
-                    return ERR_FUNC_INDEX_NOT_FOUND;
-                }
-                size_t idx = (size_t)num;
                 json_array* arr = &sub->inner.arr;
                 if (idx >= arr->len) {
                     tracked_value_free(&arg);
@@ -345,4 +353,119 @@ int func_index(template_arg_iter* iter, tracked_value* out) {
     out->is_heap = false;
     tracked_value_free(&val);
     return 0;
+}
+
+// This function can trigger use-after-frees, if the tracked_value passed
+// as first argument has `is_heap = true`. In the current implementation
+// via the template it is not possible to construct a tracked_value with
+// `is_heap = false` of JSON_TY_ARRAY, so this case cannot occur.
+int func_slice(template_arg_iter* iter, tracked_value* out) {
+    int err = 0;
+    int args_len = template_arg_iter_len(iter);
+    if (args_len < 2 || args_len > 4) {
+        return ERR_FUNC_INVALID_ARG_LEN;
+    }
+    tracked_value target = TRACKED_NULL;
+    err = template_arg_iter_next(iter, &target);
+    if (err != 0) {
+        return err;
+    }
+    if (target.val.ty != JSON_TY_ARRAY && target.val.ty != JSON_TY_STRING) {
+        err = ERR_FUNC_INVALID_ARG_TYPE;
+        goto cleanup_target;
+    }
+    tracked_value start_val = TRACKED_NULL;
+    err = template_arg_iter_next(iter, &start_val);
+    if (err != 0) {
+        goto cleanup_target;
+    }
+    size_t start_idx;
+    err = validate_index(&start_val.val, &start_idx);
+    if (err != 0) {
+        goto cleanup_start;
+    }
+    tracked_value end_val = TRACKED_NULL;
+    size_t target_len;
+    if (target.val.ty == JSON_TY_ARRAY) {
+        target_len = target.val.inner.arr.len;
+    } else {
+        target_len = strlen(target.val.inner.str);
+        if (args_len > 3) { // strings cannot be 3-indexed
+            err = ERR_FUNC_INVALID_ARG_LEN;
+            goto cleanup_end;
+        }
+    }
+    if (start_idx >= target_len) {
+        err = ERR_FUNC_INVALID_ARG_VAL;
+        goto cleanup_end;
+    }
+    size_t end_idx = target_len;
+    if (args_len > 2) {
+        err = template_arg_iter_next(iter, &end_val);
+        if (err != 0) {
+            goto cleanup_start;
+        }
+        size_t end;
+        err = validate_index(&end_val.val, &end);
+        if (err != 0) {
+            goto cleanup_end;
+        }
+        if (end > target_len) {
+            err = ERR_FUNC_INVALID_ARG_VAL;
+            goto cleanup_end;
+        }
+        end_idx = end;
+    }
+    if (end_idx < start_idx) {
+        err = ERR_FUNC_INVALID_ARG_VAL;
+        goto cleanup_end;
+    }
+    size_t len = end_idx - start_idx;
+    if (args_len == 4) {
+        tracked_value cap = TRACKED_NULL;
+        err = template_arg_iter_next(iter, &cap);
+        if (err != 0) {
+            goto cleanup_end;
+        }
+        size_t cap_idx;
+        err = validate_index(&cap.val, &cap_idx);
+        if (err != 0) {
+            tracked_value_free(&cap);
+            goto cleanup_end;
+        }
+        if (cap_idx < end_idx) {
+            err = ERR_FUNC_INVALID_ARG_VAL;
+            tracked_value_free(&cap);
+            goto cleanup_end;
+        }
+    }
+    if (target.val.ty == JSON_TY_ARRAY) {
+        json_array arr = target.val.inner.arr;
+        out->is_heap = false;
+        out->val = (json_value){
+            .ty = JSON_TY_ARRAY,
+            .inner = {
+                .arr = {
+                    .data = arr.data + start_idx,
+                    .cap = arr.cap - start_idx,
+                    .len = len,
+                }
+            }
+        };
+    } else {
+        char* sliced = malloc(len + 1);
+        assert(sliced);
+        strncpy(sliced, target.val.inner.str + start_idx, len);
+        sliced[len] = 0;
+        out->is_heap = true;
+        out->val.ty = JSON_TY_STRING;
+        out->val.inner.str = sliced;
+    }
+cleanup_end:
+    tracked_value_free(&end_val);
+cleanup_start:
+    tracked_value_free(&start_val);
+cleanup_target:
+    tracked_value_free(&target);
+    return err;
 }

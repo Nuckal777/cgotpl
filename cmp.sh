@@ -234,6 +234,19 @@ testcase '{{ block "1" . }}{{ block "2" . }}a{{ end }}{{ end }}{{ template "2" .
 testcase '{{ define "1" }}{{ block "2" . }}a{{ end }}{{ end }}{{ template "2" . }}' 'null'
 testcase '{{ block "1" . }}{{ define "2" }}a{{ end }}{{ end }}{{ template "2" . }}' 'null'
 testcase '{{ if false }}{{ block "2" . }}a{{ end }}{{ end }}{{ template "2" . }}' 'null'
+testcase '{{ slice `byebye` 1 }}' 'null'
+testcase '{{ slice `byebye` 1 4 }}' 'null'
+testcase '{{ slice `byebye` 1 4 5 }}' 'null'
+testcase '{{ slice . 2 }}' '[12,34,56,78,90]'
+testcase '{{ slice . 2 5 }}' '[12,34,56,78,90]'
+testcase '{{ slice . 2 5 6 }}' '[12,34,56,78,90]'
+testcase '{{ slice . 1 4 1 }}' '[12,34,56,78,90]'
+testcase '{{ slice . -1 4 1 }}' '[12,34,56,78,90]'
+testcase '{{ slice . 1 -4 1 }}' '[12,34,56,78,90]'
+testcase '{{ slice . 1 4 -1 }}' '[12,34,56,78,90]'
+testcase '{{ slice . 1.3 4 1 }}' '[12,34,56,78,90]'
+testcase '{{ slice . 1 4.4 1 }}' '[12,34,56,78,90]'
+testcase '{{ slice . 1 4 1.5 }}' '[12,34,56,78,90]'
 
 if [ $FAILS -ne 0 ]; then
     printf "\nencountered %d failures\n" $FAILS

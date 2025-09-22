@@ -106,23 +106,30 @@ Syntactical issues in non-executed branches may not lead to an error.
 
 ## Functions
 
-| Function | State              |
-| -------- | ------------------ |
-| and      | :white_check_mark: |
-| call     | :x:                |
-| html     | :x:                |
-| index    | :white_check_mark: |
-| slice    | :x:                |
-| js       | :x:                |
-| len      | :white_check_mark: |
-| not      | :white_check_mark: |
-| or       | :white_check_mark: |
-| print    | :white_check_mark: |
-| printf   | :x:                |
-| println  | :white_check_mark: |
-| urlquery | :x:                |
+| Function | State                                           |
+| -------- | ----------------------------------------------- |
+| and      | :white_check_mark:                              |
+| call     | :poop: (makes no sense for this implementation) |
+| html     | :x:                                             |
+| index    | :white_check_mark:                              |
+| slice    | :white_check_mark:                              |
+| js       | :x:                                             |
+| len      | :white_check_mark:                              |
+| not      | :white_check_mark:                              |
+| or       | :white_check_mark:                              |
+| print    | :white_check_mark:                              |
+| printf   | :x:                                             |
+| println  | :white_check_mark:                              |
+| urlquery | :x:                                             |
+| eq       | :x:                                             |
+| ne       | :x:                                             |
+| lt       | :x:                                             |
+| le       | :x:                                             |
+| gt       | :x:                                             |
+| ge       | :x:                                             |
 
 The c and go standard library may disagree on certain formatting (`printf`) corner-cases.
+This implementation cannot check for the correct upper bound on capacity for the 3-index slice function on arrays as a slice's capacity depends on implementation details of the go runtime.
 
 ## Why?
 
