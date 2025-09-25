@@ -33,6 +33,7 @@
 "index"
 "slice"
 "eq"
+"ne"
 
 "\\b"
 "\\f"

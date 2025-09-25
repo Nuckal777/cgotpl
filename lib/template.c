@@ -2068,6 +2068,8 @@ int template_dispatch_func(stream* in, state* state, tracked_value* piped, track
         err = func_slice(&iter, result);
     } else if (strcmp(func_name, "eq") == 0) {
         err = func_eq(&iter, result);
+    } else if (strcmp(func_name, "ne") == 0) {
+        err = func_ne(&iter, result);
     }
     if (err != 0) {
         goto cleanup;

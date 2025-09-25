@@ -262,6 +262,12 @@ testcase '{{ eq (index . 0) (index . 1) }}' '[[2,1],[2,3]]'
 testcase '{{ eq (index . 0) (index . 1) }}' '[[2,1],null]'
 testcase '{{ eq (index . 0) (index . 1) }}' '[null,[3,4]]'
 testcase '{{ eq (index . 0) (index . 1) }}' '[{"a":3}, {"a":3}]'
+testcase '{{ ne 2 2 }}' 'null'
+testcase '{{ ne 2 4 }}' 'null'
+testcase '{{ ne 2 4 6 }}' 'null'
+testcase '{{ ne 2 "a" }}' 'null'
+testcase '{{ ne 4 }}' 'null'
+testcase '{{ ne }}' 'null'
 
 if [ $FAILS -ne 0 ]; then
     printf "\nencountered %d failures\n" $FAILS

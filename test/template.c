@@ -697,6 +697,26 @@ nutest_result template_eq_single_arg(void) {
     return assert_eval_err("{{ eq `z` }}", ERR_FUNC_INVALID_ARG_LEN);
 }
 
+nutest_result template_ne_true_false(void) {
+    return assert_eval_null("{{ ne true false }}", "true");
+}
+
+nutest_result template_ne_true_true(void) {
+    return assert_eval_null("{{ ne true true }}", "false");
+}
+
+nutest_result template_ne_no_arg(void) {
+    return assert_eval_err("{{ ne }}", ERR_FUNC_INVALID_ARG_LEN);
+}
+
+nutest_result template_ne_single_arg(void) {
+    return assert_eval_err("{{ ne `z` }}", ERR_FUNC_INVALID_ARG_LEN);
+}
+
+nutest_result template_ne_many_arg(void) {
+    return assert_eval_err("{{ ne `z` 1 2 3 }}", ERR_FUNC_INVALID_ARG_LEN);
+}
+
 int main() {
     nutest_register(template_identity);
     nutest_register(template_empty_pipeline);
@@ -855,5 +875,10 @@ int main() {
     nutest_register(template_eq_nil_nil);
     nutest_register(template_eq_no_arg);
     nutest_register(template_eq_single_arg);
+    nutest_register(template_ne_true_false);
+    nutest_register(template_ne_true_true);
+    nutest_register(template_ne_no_arg);
+    nutest_register(template_ne_single_arg);
+    nutest_register(template_ne_many_arg);
     return nutest_run();
 }

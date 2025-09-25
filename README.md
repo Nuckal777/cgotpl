@@ -122,7 +122,7 @@ Syntactical issues in non-executed branches may not lead to an error.
 | println  | :white_check_mark:                              |
 | urlquery | :x:                                             |
 | eq       | :white_check_mark:                              |
-| ne       | :x:                                             |
+| ne       | :white_check_mark:                              |
 | lt       | :x:                                             |
 | le       | :x:                                             |
 | gt       | :x:                                             |

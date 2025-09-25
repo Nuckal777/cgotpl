@@ -530,3 +530,32 @@ cleanup:
     tracked_value_free(&base);
     return err;
 }
+
+int func_ne(template_arg_iter* iter, tracked_value* out) {
+    int err = 0;
+    size_t args_len = template_arg_iter_len(iter);
+    if (args_len != 2) {
+        return ERR_FUNC_INVALID_ARG_LEN;
+    }
+    tracked_value a = TRACKED_NULL;
+    err = template_arg_iter_next(iter, &a);
+    if (err) {
+        return err;
+    }
+    tracked_value b = TRACKED_NULL;
+    err = template_arg_iter_next(iter, &b);
+    if (err) {
+        goto cleanup;
+    }
+    int equal;
+    err = go_equal(&a.val, &b.val, &equal);
+    tracked_value_free(&b);
+    if (err) {
+        goto cleanup;
+    }
+    out->is_heap = false;
+    out->val.ty = equal ? JSON_TY_FALSE : JSON_TY_TRUE;
+cleanup:
+    tracked_value_free(&a);
+    return err;
+}
