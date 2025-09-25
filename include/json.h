@@ -33,15 +33,13 @@ struct json_value_st {
     } inner;
 };
 
-#define JSON_NULL  \
-    (json_value) { \
-        .ty = 0    \
-    }
+#define JSON_NULL (json_value){.ty = 0}
 
 // Consumes an abitrary amount of bytes from st to parse a single JSON value
 // into val. Returns 0 on success.
 int json_parse(stream* st, json_value* val);
 void json_value_copy(json_value* dest, const json_value* src);
+int json_value_equal(const json_value* a, const json_value* b);
 void json_value_free(json_value* val);
 
 #endif

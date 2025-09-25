@@ -121,7 +121,7 @@ Syntactical issues in non-executed branches may not lead to an error.
 | printf   | :x:                                             |
 | println  | :white_check_mark:                              |
 | urlquery | :x:                                             |
-| eq       | :x:                                             |
+| eq       | :white_check_mark:                              |
 | ne       | :x:                                             |
 | lt       | :x:                                             |
 | le       | :x:                                             |

@@ -657,6 +657,46 @@ nutest_result template_slice_start_greater_end(void) {
     return assert_eval_err("{{ slice `hello` 4 2 }}", ERR_FUNC_INVALID_ARG_VAL);
 }
 
+nutest_result template_eq_single_num(void) {
+    return assert_eval_null("{{ eq 4 7 }}", "false");
+}
+
+nutest_result template_eq_many_num(void) {
+    return assert_eval_null("{{ eq 4 7 3 4 }}", "true");
+}
+
+nutest_result template_eq_single_str(void) {
+    return assert_eval_null("{{ eq `f` `h` }}", "false");
+}
+
+nutest_result template_eq_true_false(void) {
+    return assert_eval_null("{{ eq true false }}", "false");
+}
+
+nutest_result template_eq_num_str(void) {
+    return assert_eval_err("{{ eq 6 `6` }}", ERR_FUNC_INVALID_ARG_TYPE);
+}
+
+nutest_result template_eq_arr_nil(void) {
+    return assert_eval_err_data("{{ eq . nil }}", "[1, 2]", ERR_FUNC_INVALID_ARG_TYPE);
+}
+
+nutest_result template_eq_obj_nil(void) {
+    return assert_eval_err_data("{{ eq . nil }}", "{}", ERR_FUNC_INVALID_ARG_TYPE);
+}
+
+nutest_result template_eq_nil_nil(void) {
+    return assert_eval_null("{{ eq nil nil }}", "true");
+}
+
+nutest_result template_eq_no_arg(void) {
+    return assert_eval_err("{{ eq }}", ERR_FUNC_INVALID_ARG_LEN);
+}
+
+nutest_result template_eq_single_arg(void) {
+    return assert_eval_err("{{ eq `z` }}", ERR_FUNC_INVALID_ARG_LEN);
+}
+
 int main() {
     nutest_register(template_identity);
     nutest_register(template_empty_pipeline);
@@ -805,5 +845,15 @@ int main() {
     nutest_register(template_slice_huge_start);
     nutest_register(template_slice_huge_end);
     nutest_register(template_slice_start_greater_end);
+    nutest_register(template_eq_single_num);
+    nutest_register(template_eq_many_num);
+    nutest_register(template_eq_single_str);
+    nutest_register(template_eq_true_false);
+    nutest_register(template_eq_num_str);
+    nutest_register(template_eq_arr_nil);
+    nutest_register(template_eq_obj_nil);
+    nutest_register(template_eq_nil_nil);
+    nutest_register(template_eq_no_arg);
+    nutest_register(template_eq_single_arg);
     return nutest_run();
 }

@@ -390,7 +390,7 @@ int func_slice(template_arg_iter* iter, tracked_value* out) {
         target_len = target.val.inner.arr.len;
     } else {
         target_len = strlen(target.val.inner.str);
-        if (args_len > 3) { // strings cannot be 3-indexed
+        if (args_len > 3) {  // strings cannot be 3-indexed
             err = ERR_FUNC_INVALID_ARG_LEN;
             goto cleanup_end;
         }
@@ -442,16 +442,12 @@ int func_slice(template_arg_iter* iter, tracked_value* out) {
     if (target.val.ty == JSON_TY_ARRAY) {
         json_array arr = target.val.inner.arr;
         out->is_heap = false;
-        out->val = (json_value){
-            .ty = JSON_TY_ARRAY,
-            .inner = {
-                .arr = {
-                    .data = arr.data + start_idx,
-                    .cap = arr.cap - start_idx,
-                    .len = len,
-                }
-            }
-        };
+        out->val = (json_value){.ty = JSON_TY_ARRAY,
+                                .inner = {.arr = {
+                                              .data = arr.data + start_idx,
+                                              .cap = arr.cap - start_idx,
+                                              .len = len,
+                                          }}};
     } else {
         char* sliced = malloc(len + 1);
         assert(sliced);
@@ -467,5 +463,70 @@ cleanup_start:
     tracked_value_free(&start_val);
 cleanup_target:
     tracked_value_free(&target);
+    return err;
+}
+
+int go_equal(json_value* a, json_value* b, int* equal) {
+    if (a->ty == JSON_TY_NULL || b->ty == JSON_TY_NULL) {
+        *equal = (a->ty == b->ty);
+        return 0;
+    }
+    if ((a->ty == JSON_TY_FALSE && b->ty == JSON_TY_TRUE) || (a->ty == JSON_TY_TRUE && b->ty == JSON_TY_FALSE)) {
+        *equal = 0;
+        return 0;
+    }
+    if (a->ty != b->ty) {
+        return ERR_FUNC_INVALID_ARG_TYPE;
+    }
+    switch (a->ty) {
+        case JSON_TY_NULL:
+        case JSON_TY_TRUE:
+        case JSON_TY_FALSE:
+            *equal = 1;
+            return 0;
+        case JSON_TY_NUMBER:
+            *equal = a->inner.num == b->inner.num;
+            return 0;
+        case JSON_TY_STRING:
+            *equal = !strcmp(a->inner.str, b->inner.str);
+            return 0;
+        default:  // for some reason arrays and objects cannot be compared
+            return ERR_FUNC_INVALID_ARG_TYPE;
+    }
+    assert(0);
+}
+
+int func_eq(template_arg_iter* iter, tracked_value* out) {
+    int err = 0;
+    size_t args_len = template_arg_iter_len(iter);
+    if (args_len < 2) {
+        return ERR_FUNC_INVALID_ARG_LEN;
+    }
+    tracked_value base = TRACKED_NULL;
+    err = template_arg_iter_next(iter, &base);
+    if (err) {
+        return err;
+    }
+    out->is_heap = false;
+    out->val.ty = JSON_TY_FALSE;
+    // short circuiting is forbidden by the spec
+    for (size_t i = 1; i < args_len; i++) {
+        tracked_value local = TRACKED_NULL;
+        err = template_arg_iter_next(iter, &local);
+        if (err) {
+            goto cleanup;
+        }
+        int equal;
+        err = go_equal(&base.val, &local.val, &equal);
+        tracked_value_free(&local);
+        if (err) {
+            goto cleanup;
+        }
+        if (equal) {
+            out->val.ty = JSON_TY_TRUE;
+        }
+    }
+cleanup:
+    tracked_value_free(&base);
     return err;
 }

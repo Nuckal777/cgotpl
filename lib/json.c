@@ -93,6 +93,53 @@ void json_value_copy(json_value* dest, const json_value* src) {
     assert(0);
 }
 
+int json_value_equal(const json_value* a, const json_value* b) {
+    if (a->ty != b->ty) {
+        return 0;
+    }
+    switch (a->ty) {
+        case JSON_TY_NULL:
+        case JSON_TY_TRUE:
+        case JSON_TY_FALSE:
+            return 1;
+        case JSON_TY_NUMBER:
+            return a->inner.num == b->inner.num;
+        case JSON_TY_STRING:
+            return !strcmp(a->inner.str, b->inner.str);
+        case JSON_TY_ARRAY: {
+            if (a->inner.arr.len != b->inner.arr.len) {
+                return 0;
+            }
+            for (size_t i = 0; i < a->inner.arr.len; ++i) {
+                if (!json_value_equal(&a->inner.arr.data[i], &b->inner.arr.data[i])) {
+                    return 0;
+                }
+            }
+            return 1;
+        }
+        case JSON_TY_OBJECT: {
+            if (a->inner.obj.count != b->inner.obj.count) {
+                return 0;
+            }
+            char** keys = (char**)hashmap_keys(&a->inner.obj);
+            for (size_t i = 0; i < a->inner.obj.count; i++) {
+                json_value* aval;
+                json_value* bval;
+                assert(hashmap_get(&a->inner.obj, keys[i], (const void**)&aval));
+                assert(hashmap_get(&b->inner.obj, keys[i], (const void**)&bval));
+                if (!json_value_equal(aval, bval)) {
+                    free(keys);
+                    return 0;
+                }
+            }
+            free(keys);
+            return 1;
+        }
+        default:
+            assert(0);
+    }
+}
+
 void json_str_append(char val, char** buf, size_t* len, size_t* cap) {
     if (*len == *cap) {
         *cap = *cap * 3 / 2;

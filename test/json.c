@@ -312,6 +312,111 @@ nutest_result json_value_copy_object(void) {
     return assert_json_value_copy("{\"abc\": true}");
 }
 
+nutest_result assert_json_value_eq(const char* a, const char* b) {
+    stream ast;
+    stream_open_memory(&ast, a, strlen(a));
+    json_value aval;
+    int err = json_parse(&ast, &aval);
+    NUTEST_ASSERT(err == 0);
+
+    stream bst;
+    stream_open_memory(&bst, b, strlen(b));
+    json_value bval;
+    err = json_parse(&bst, &bval);
+    NUTEST_ASSERT(err == 0);
+
+    NUTEST_ASSERT(json_value_equal(&aval, &bval));
+    json_value_free(&bval);
+    json_value_free(&aval);
+    return NUTEST_PASS;
+}
+
+nutest_result assert_json_value_ne(const char* a, const char* b) {
+    stream ast;
+    stream_open_memory(&ast, a, strlen(a));
+    json_value aval;
+    int err = json_parse(&ast, &aval);
+    NUTEST_ASSERT(err == 0);
+
+    stream bst;
+    stream_open_memory(&bst, b, strlen(b));
+    json_value bval;
+    err = json_parse(&bst, &bval);
+    NUTEST_ASSERT(err == 0);
+
+    NUTEST_ASSERT(!json_value_equal(&aval, &bval));
+    json_value_free(&bval);
+    json_value_free(&aval);
+    return NUTEST_PASS;
+}
+
+nutest_result json_value_null_eq_null(void) {
+    return assert_json_value_eq("null", "null");
+}
+
+nutest_result json_value_null_ne_true(void) {
+    return assert_json_value_ne("null", "true");
+}
+
+nutest_result json_value_true_eq_true(void) {
+    return assert_json_value_eq("true", "true");
+}
+
+nutest_result json_value_false_eq_false(void) {
+    return assert_json_value_eq("false", "false");
+}
+
+nutest_result json_value_true_ne_false(void) {
+    return assert_json_value_ne("true", "false");
+}
+
+nutest_result json_value_float_eq_float(void) {
+    return assert_json_value_eq("3.1415", "3.1415");
+}
+
+nutest_result json_value_float_ne_float(void) {
+    return assert_json_value_ne("3.1415", "2.7182");
+}
+
+nutest_result json_value_int_eq_float(void) {
+    return assert_json_value_eq("1", "1.0");
+}
+
+nutest_result json_value_int_ne_str(void) {
+    return assert_json_value_ne("1", "\"1\"");
+}
+
+nutest_result json_value_str_eq_str(void) {
+    return assert_json_value_eq("\"hello\"", "\"hello\"");
+}
+
+nutest_result json_value_str_ne_str(void) {
+    return assert_json_value_ne("\"hello\"", "\"world\"");
+}
+
+nutest_result json_value_arr_eq_arr(void) {
+    return assert_json_value_eq("[1,2,3]", "[1,2,3]");
+}
+
+nutest_result json_value_arr_ne_arr(void) {
+    return assert_json_value_ne("[1,2,3]", "[1,2,4]");
+}
+
+nutest_result json_value_obj_eq_obj(void) {
+    return assert_json_value_eq("{\"a\":1,\"b\":2}", "{\"a\":1,\"b\":2}");
+}
+
+nutest_result json_value_obj_ne_obj(void) {
+    return assert_json_value_ne("{\"a\":1,\"b\":2}", "{\"a\":1,\"b\":3}");
+}
+
+nutest_result json_value_mixed_nested_eq(void) {
+    return assert_json_value_eq("{\"a\":[1,2,{\"b\":false}],\"c\":{\"d\":3}}", "{\"a\":[1,2,{\"b\":false}],\"c\":{\"d\":3}}");
+}
+nutest_result json_value_mixed_nested_ne(void) {
+    return assert_json_value_ne("{\"a\":[1,2,{\"b\":false}],\"c\":{\"d\":3}}", "{\"a\":[1,2,{\"b\":true}],\"c\":{\"d\":3}}");
+}
+
 int main() {
     nutest_register(json_parse_str_ascii);
     nutest_register(json_parse_str_long);
@@ -345,5 +450,22 @@ int main() {
     nutest_register(json_value_copy_string);
     nutest_register(json_value_copy_array);
     nutest_register(json_value_copy_object);
+    nutest_register(json_value_null_eq_null);
+    nutest_register(json_value_null_ne_true);
+    nutest_register(json_value_true_eq_true);
+    nutest_register(json_value_false_eq_false);
+    nutest_register(json_value_true_ne_false);
+    nutest_register(json_value_float_eq_float);
+    nutest_register(json_value_float_ne_float);
+    nutest_register(json_value_int_eq_float);
+    nutest_register(json_value_int_ne_str);
+    nutest_register(json_value_str_eq_str);
+    nutest_register(json_value_str_ne_str);
+    nutest_register(json_value_arr_eq_arr);
+    nutest_register(json_value_arr_ne_arr);
+    nutest_register(json_value_obj_eq_obj);
+    nutest_register(json_value_obj_ne_obj);
+    nutest_register(json_value_mixed_nested_eq);
+    nutest_register(json_value_mixed_nested_ne);
     return nutest_run();
 }

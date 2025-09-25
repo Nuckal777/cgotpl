@@ -18,5 +18,6 @@ add_test(NAME TestJson COMMAND test_json)
 add_test(NAME TestTemplate COMMAND test_template)
 add_custom_target(
     test_all COMMAND ${CMAKE_CTEST_COMMAND}
-    DEPENDS test_map test_stream test_json test_template
+    DEPENDS ${TESTS}
+    COMMENT "Run all tests"
 )

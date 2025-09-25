@@ -57,5 +57,6 @@ int func_print(template_arg_iter* iter, tracked_value* out);
 int func_println(template_arg_iter* iter, tracked_value* out);
 int func_index(template_arg_iter* iter, tracked_value* out);
 int func_slice(template_arg_iter* iter, tracked_value* out);
+int func_eq(template_arg_iter* iter, tracked_value* out);
 
 #endif
