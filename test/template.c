@@ -678,11 +678,11 @@ nutest_result template_eq_num_str(void) {
 }
 
 nutest_result template_eq_arr_nil(void) {
-    return assert_eval_err_data("{{ eq . nil }}", "[1, 2]", ERR_FUNC_INVALID_ARG_TYPE);
+    return assert_eval_data("{{ eq . nil }}", "[1, 2]", "false");
 }
 
 nutest_result template_eq_obj_nil(void) {
-    return assert_eval_err_data("{{ eq . nil }}", "{}", ERR_FUNC_INVALID_ARG_TYPE);
+    return assert_eval_data("{{ eq . nil }}", "{}", "false");
 }
 
 nutest_result template_eq_nil_nil(void) {
