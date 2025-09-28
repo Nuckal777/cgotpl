@@ -123,10 +123,10 @@ Syntactical issues in non-executed branches may not lead to an error.
 | urlquery | :x:                                             |
 | eq       | :white_check_mark:                              |
 | ne       | :white_check_mark:                              |
-| lt       | :x:                                             |
-| le       | :x:                                             |
-| gt       | :x:                                             |
-| ge       | :x:                                             |
+| lt       | :white_check_mark:                              |
+| le       | :white_check_mark:                              |
+| gt       | :white_check_mark:                              |
+| ge       | :white_check_mark:                              |
 
 The c and go standard library may disagree on certain formatting (`printf`) corner-cases.
 This implementation cannot check for the correct upper bound on capacity for the 3-index slice function on arrays as a slice's capacity depends on implementation details of the go runtime.

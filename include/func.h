@@ -60,4 +60,10 @@ int func_slice(template_arg_iter* iter, tracked_value* out);
 int func_eq(template_arg_iter* iter, tracked_value* out);
 int func_ne(template_arg_iter* iter, tracked_value* out);
 
+#define CMP_OP_LT 1
+#define CMP_OP_LE 2
+#define CMP_OP_GT 3
+#define CMP_OP_GE 4
+int func_cmp(template_arg_iter* iter, tracked_value* out, int cmp_op);
+
 #endif

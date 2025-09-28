@@ -717,6 +717,54 @@ nutest_result template_ne_many_arg(void) {
     return assert_eval_err("{{ ne `z` 1 2 3 }}", ERR_FUNC_INVALID_ARG_LEN);
 }
 
+nutest_result template_gt_num(void) {
+    return assert_eval_null("{{ gt 3 2 }} {{ gt 2 2 }} {{ gt 1 2 }}", "true false false");
+}
+
+nutest_result template_ge_num(void) {
+    return assert_eval_null("{{ ge 3 2 }} {{ ge 2 2 }} {{ ge 1 2 }}", "true true false");
+}
+
+nutest_result template_lt_num(void) {
+    return assert_eval_null("{{ lt 3 2 }} {{ lt 2 2 }} {{ lt 1 2 }}", "false false true");
+}
+
+nutest_result template_le_num(void) {
+    return assert_eval_null("{{ le 3 2 }} {{ le 2 2 }} {{ le 1 2 }}", "false true true");
+}
+
+nutest_result template_gt_str(void) {
+    return assert_eval_null("{{ gt `z` `y` }} {{ gt `y` `y` }} {{ gt `x` `y` }}", "true false false");
+}
+
+nutest_result template_lt_str(void) {
+    return assert_eval_null("{{ lt `z` `y` }} {{ lt `y` `y` }} {{ lt `x` `y` }}", "false false true");
+}
+
+nutest_result template_ge_str(void) {
+    return assert_eval_null("{{ ge `z` `y` }} {{ ge `y` `y` }} {{ ge `x` `y` }}", "true true false");
+}
+
+nutest_result template_le_str(void) {
+    return assert_eval_null("{{ le `z` `y` }} {{ le `y` `y` }} {{ le `x` `y` }}", "false true true");
+}
+
+nutest_result template_gt_no_arg(void) {
+    return assert_eval_err("{{ gt }}", ERR_FUNC_INVALID_ARG_LEN);
+}
+
+nutest_result template_gt_single_arg(void) {
+    return assert_eval_err("{{ gt 3 }}", ERR_FUNC_INVALID_ARG_LEN);
+}
+
+nutest_result template_gt_many_arg(void) {
+    return assert_eval_err("{{ gt 3 4 5 }}", ERR_FUNC_INVALID_ARG_LEN);
+}
+
+nutest_result template_gt_mismatch_ty(void) {
+    return assert_eval_err("{{ gt `v` 5 }}", ERR_FUNC_INVALID_ARG_TYPE);
+}
+
 int main() {
     nutest_register(template_identity);
     nutest_register(template_empty_pipeline);
@@ -880,5 +928,17 @@ int main() {
     nutest_register(template_ne_no_arg);
     nutest_register(template_ne_single_arg);
     nutest_register(template_ne_many_arg);
+    nutest_register(template_gt_num);
+    nutest_register(template_ge_num);
+    nutest_register(template_lt_num);
+    nutest_register(template_le_num);
+    nutest_register(template_gt_str);
+    nutest_register(template_ge_str);
+    nutest_register(template_lt_str);
+    nutest_register(template_le_str);
+    nutest_register(template_gt_no_arg);
+    nutest_register(template_gt_single_arg);
+    nutest_register(template_gt_many_arg);
+    nutest_register(template_gt_mismatch_ty);
     return nutest_run();
 }

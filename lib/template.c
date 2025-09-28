@@ -2070,6 +2070,14 @@ int template_dispatch_func(stream* in, state* state, tracked_value* piped, track
         err = func_eq(&iter, result);
     } else if (strcmp(func_name, "ne") == 0) {
         err = func_ne(&iter, result);
+    } else if (strcmp(func_name, "gt") == 0) {
+        err = func_cmp(&iter, result, CMP_OP_GT);
+    } else if (strcmp(func_name, "ge") == 0) {
+        err = func_cmp(&iter, result, CMP_OP_GE);
+    } else if (strcmp(func_name, "lt") == 0) {
+        err = func_cmp(&iter, result, CMP_OP_LT);
+    } else if (strcmp(func_name, "le") == 0) {
+        err = func_cmp(&iter, result, CMP_OP_LE);
     }
     if (err != 0) {
         goto cleanup;

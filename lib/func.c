@@ -559,3 +559,72 @@ cleanup:
     tracked_value_free(&a);
     return err;
 }
+
+int func_cmp(template_arg_iter* iter, tracked_value* out, int cmp_op) {
+    size_t args_len = template_arg_iter_len(iter);
+    if (args_len != 2) {
+        return ERR_FUNC_INVALID_ARG_LEN;
+    }
+    int err = 0;
+    tracked_value a = TRACKED_NULL;
+    err = template_arg_iter_next(iter, &a);
+    if (err) {
+        return err;
+    }
+    tracked_value b = TRACKED_NULL;
+    err = template_arg_iter_next(iter, &b);
+    if (err) {
+        goto cleanup;
+    }
+    if (a.val.ty != b.val.ty) {
+        err = ERR_FUNC_INVALID_ARG_TYPE;
+        tracked_value_free(&b);
+        goto cleanup;
+    }
+    int result = 0;
+    switch (a.val.ty) {
+        case JSON_TY_STRING:
+            result = strcmp(a.val.inner.str, b.val.inner.str);  // a > b
+            switch (cmp_op) {
+                case CMP_OP_LE:
+                    if (result == 0) {
+                        result = -1;
+                    }
+                    // deliberate fallthrough
+                case CMP_OP_LT:
+                    result = result * -1;
+                    break;
+                case CMP_OP_GE:
+                    if (result == 0) {
+                        result = 1;
+                    }
+                    break;
+            }
+            break;
+        case JSON_TY_NUMBER:
+            switch (cmp_op) {
+                case CMP_OP_LT:
+                    result = a.val.inner.num < b.val.inner.num;
+                    break;
+                case CMP_OP_LE:
+                    result = a.val.inner.num <= b.val.inner.num;
+                    break;
+                case CMP_OP_GT:
+                    result = a.val.inner.num > b.val.inner.num;
+                    break;
+                case CMP_OP_GE:
+                    result = a.val.inner.num >= b.val.inner.num;
+                    break;
+            }
+            break;
+        default:
+            err = ERR_FUNC_INVALID_ARG_TYPE;
+            break;
+    }
+    out->is_heap = false;
+    out->val.ty = result > 0 ? JSON_TY_TRUE : JSON_TY_FALSE;
+    tracked_value_free(&b);
+cleanup:
+    tracked_value_free(&a);
+    return err;
+}
