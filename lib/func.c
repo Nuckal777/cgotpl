@@ -8,8 +8,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "json.h"
-
 void tracked_value_free(tracked_value* val) {
     if (val->is_heap) {
         json_value_free(&val->val);
@@ -627,4 +625,42 @@ int func_cmp(template_arg_iter* iter, tracked_value* out, int cmp_op) {
 cleanup:
     tracked_value_free(&a);
     return err;
+}
+
+int func_lt(template_arg_iter* iter, tracked_value* out) {
+    return func_cmp(iter, out, CMP_OP_LT);
+}
+
+int func_le(template_arg_iter* iter, tracked_value* out) {
+    return func_cmp(iter, out, CMP_OP_LE);
+}
+
+int func_gt(template_arg_iter* iter, tracked_value* out) {
+    return func_cmp(iter, out, CMP_OP_GT);
+}
+
+int func_ge(template_arg_iter* iter, tracked_value* out) {
+    return func_cmp(iter, out, CMP_OP_GE);
+}
+
+void funcmap_new(hashmap* map) {
+    hashmap_new(map, hashmap_strcmp, hashmap_strlen, HASH_FUNC_DJB2);
+    hashmap_insert(map, "not", func_not);
+    hashmap_insert(map, "and", func_and);
+    hashmap_insert(map, "or", func_or);
+    hashmap_insert(map, "len", func_len);
+    hashmap_insert(map, "print", func_print);
+    hashmap_insert(map, "println", func_println);
+    hashmap_insert(map, "index", func_index);
+    hashmap_insert(map, "slice", func_slice);
+    hashmap_insert(map, "eq", func_eq);
+    hashmap_insert(map, "ne", func_ne);
+    hashmap_insert(map, "lt", func_lt);
+    hashmap_insert(map, "le", func_le);
+    hashmap_insert(map, "gt", func_gt);
+    hashmap_insert(map, "ge", func_ge);
+}
+
+void funcmap_free(hashmap* map) {
+    hashmap_free(map);
 }

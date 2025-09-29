@@ -4,6 +4,7 @@
 #include <stddef.h>
 
 #include "json.h"
+#include "map.h"
 
 #define ERR_BUF_OVERFLOW -1100
 
@@ -48,6 +49,8 @@ typedef struct {
 int template_arg_iter_next(template_arg_iter* iter, tracked_value* result);
 int template_arg_iter_len(template_arg_iter* iter);
 
+typedef int (*funcptr)(template_arg_iter*, tracked_value*);
+
 bool is_empty(json_value* val);
 int func_not(template_arg_iter* iter, tracked_value* out);
 int func_and(template_arg_iter* iter, tracked_value* out);
@@ -65,5 +68,12 @@ int func_ne(template_arg_iter* iter, tracked_value* out);
 #define CMP_OP_GT 3
 #define CMP_OP_GE 4
 int func_cmp(template_arg_iter* iter, tracked_value* out, int cmp_op);
+int func_lt(template_arg_iter* iter, tracked_value* out);
+int func_le(template_arg_iter* iter, tracked_value* out);
+int func_gt(template_arg_iter* iter, tracked_value* out);
+int func_ge(template_arg_iter* iter, tracked_value* out);
+
+void funcmap_new(hashmap* map);
+void funcmap_free(hashmap* map);
 
 #endif

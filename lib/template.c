@@ -138,6 +138,7 @@ typedef struct {
     size_t range_depth;
     stack stack;
     hashmap define_locs;
+    hashmap funcmap;
     int return_reason;
     char ident[STATE_IDENT_CAP];
     bool eval_block;
@@ -2049,36 +2050,13 @@ int template_dispatch_func(stream* in, state* state, tracked_value* piped, track
         iter.args_len++;
     }
 
-    err = ERR_TEMPLATE_FUNC_UNKNOWN;
-    if (strcmp(func_name, "not") == 0) {
-        err = func_not(&iter, result);
-    } else if (strcmp(func_name, "and") == 0) {
-        err = func_and(&iter, result);
-    } else if (strcmp(func_name, "or") == 0) {
-        err = func_or(&iter, result);
-    } else if (strcmp(func_name, "len") == 0) {
-        err = func_len(&iter, result);
-    } else if (strcmp(func_name, "print") == 0) {
-        err = func_print(&iter, result);
-    } else if (strcmp(func_name, "println") == 0) {
-        err = func_println(&iter, result);
-    } else if (strcmp(func_name, "index") == 0) {
-        err = func_index(&iter, result);
-    } else if (strcmp(func_name, "slice") == 0) {
-        err = func_slice(&iter, result);
-    } else if (strcmp(func_name, "eq") == 0) {
-        err = func_eq(&iter, result);
-    } else if (strcmp(func_name, "ne") == 0) {
-        err = func_ne(&iter, result);
-    } else if (strcmp(func_name, "gt") == 0) {
-        err = func_cmp(&iter, result, CMP_OP_GT);
-    } else if (strcmp(func_name, "ge") == 0) {
-        err = func_cmp(&iter, result, CMP_OP_GE);
-    } else if (strcmp(func_name, "lt") == 0) {
-        err = func_cmp(&iter, result, CMP_OP_LT);
-    } else if (strcmp(func_name, "le") == 0) {
-        err = func_cmp(&iter, result, CMP_OP_LE);
+    funcptr f;
+    int found = hashmap_get(&state->funcmap, func_name, (const void**)&f);
+    if (!found) {
+        err = ERR_TEMPLATE_FUNC_UNKNOWN;
+        goto cleanup;
     }
+    err = f(&iter, result);
     if (err != 0) {
         goto cleanup;
     }
@@ -2333,6 +2311,7 @@ int template_eval_stream(stream* in, json_value* dot, char** out) {
     state.return_reason = RETURN_REASON_REGULAR;
     state.eval_block = false;
     hashmap_new(&state.define_locs, hashmap_strcmp, hashmap_strlen, HASH_FUNC_DJB2);
+    funcmap_new(&state.funcmap);
     stack_new(&state.stack);
     stack_push_frame(&state.stack);
     int err = stack_set_ref(&state.stack, "", dot);
@@ -2351,6 +2330,7 @@ int template_eval_stream(stream* in, json_value* dot, char** out) {
     *out = state.out.data;
 cleanup:
     stack_free(&state.stack);
+    funcmap_free(&state.funcmap);
     hashmap_iter(&state.define_locs, NULL, define_loc_free);
     hashmap_free(&state.define_locs);
     return err;
