@@ -18,7 +18,10 @@ void buf_init(buf* b);
 void buf_append(buf* b, const char* arr, size_t n);
 void buf_free(buf* b);
 
-int sprintval(buf* b, json_value* val);
+#define NULL_STR_NIL "<nil>"
+#define NULL_STR_NO_VALUE "<no value>"
+
+int sprintval(buf* b, json_value* val, const char* null_str);
 
 typedef struct {
     json_value val;

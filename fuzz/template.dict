@@ -38,6 +38,7 @@
 "ge"
 "lt"
 "le"
+"urlquery"
 
 "\\b"
 "\\f"

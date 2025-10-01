@@ -449,7 +449,7 @@ nutest_result template_func_len_num(void) {
 }
 
 nutest_result template_func_print(void) {
-    return assert_eval_data("{{ print \"a\" .x . true false 7 }}", "{\"x\": [1,2]}", "a [1 2] map[x:[1 2]] true false 7");
+    return assert_eval_data("{{ print \"a\" .x . true false 7 }}", "{\"x\": [1,2]}", "a[1 2] map[x:[1 2]] true false 7");
 }
 
 nutest_result template_func_println(void) {
@@ -765,6 +765,14 @@ nutest_result template_gt_mismatch_ty(void) {
     return assert_eval_err("{{ gt `v` 5 }}", ERR_FUNC_INVALID_ARG_TYPE);
 }
 
+nutest_result template_urlquery_str(void) {
+    return assert_eval_null("{{ urlquery `a` `€` }}", "a%E2%82%AC");
+}
+
+nutest_result template_urlquery_nil(void) {
+    return assert_eval_null("{{ urlquery nil }}", "%3Cno+value%3E");
+}
+
 int main() {
     nutest_register(template_identity);
     nutest_register(template_empty_pipeline);
@@ -940,5 +948,7 @@ int main() {
     nutest_register(template_gt_single_arg);
     nutest_register(template_gt_many_arg);
     nutest_register(template_gt_mismatch_ty);
+    nutest_register(template_urlquery_str);
+    nutest_register(template_urlquery_nil);
     return nutest_run();
 }

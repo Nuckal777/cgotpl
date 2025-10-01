@@ -837,7 +837,7 @@ int template_end_pipeline(stream* in, state* state, json_value* result) {
                 return ERR_TEMPLATE_INVALID_SYNTAX;
             }
             if (result->ty != JSON_TY_NULL) {
-                err = sprintval(&state->out, result);
+                err = sprintval(&state->out, result, NULL_STR_NIL);
                 if (err != 0) {
                     return err;
                 }

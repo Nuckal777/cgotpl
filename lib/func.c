@@ -1,6 +1,7 @@
 #include "func.h"
 
 #include <assert.h>
+#include <ctype.h>
 #include <math.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -44,16 +45,16 @@ typedef struct {
     buf* b;
     size_t count;
     size_t len;
+    const char* null_str;
 } sprintentry_data;
 
 void sprintentry(entry* e, void* userdata);
 
-int sprintval(buf* b, json_value* val) {
+int sprintval(buf* b, json_value* val, const char* null_str) {
     size_t expected;
     char print_buf[128];
-    const char str_true[] = "true";
-    const char str_false[] = "false";
-    const char str_null[] = "<nil>";
+    const char true_str[] = "true";
+    const char false_str[] = "false";
     json_array* arr;
     hashmap* obj;
     switch (val->ty) {
@@ -68,19 +69,19 @@ int sprintval(buf* b, json_value* val) {
             buf_append(b, val->inner.str, strlen(val->inner.str));
             return 0;
         case JSON_TY_TRUE:
-            buf_append(b, str_true, sizeof(str_true) - 1);
+            buf_append(b, true_str, sizeof(true_str) - 1);
             return 0;
         case JSON_TY_FALSE:
-            buf_append(b, str_false, sizeof(str_false) - 1);
+            buf_append(b, false_str, sizeof(false_str) - 1);
             return 0;
         case JSON_TY_NULL:
-            buf_append(b, str_null, sizeof(str_null) - 1);
+            buf_append(b, null_str, strlen(null_str));
             return 0;
         case JSON_TY_ARRAY:
             arr = &val->inner.arr;
             buf_append(b, "[", 1);
             for (size_t i = 0; i < arr->len; i++) {
-                sprintval(b, arr->data + i);
+                sprintval(b, arr->data + i, null_str);
                 if (i != arr->len - 1) {
                     buf_append(b, " ", 1);
                 }
@@ -90,7 +91,7 @@ int sprintval(buf* b, json_value* val) {
         case JSON_TY_OBJECT:
             obj = &val->inner.obj;
             buf_append(b, "map[", 4);
-            sprintentry_data data = {.b = b, .count = 0, .len = obj->count};
+            sprintentry_data data = {.b = b, .count = 0, .len = obj->count, .null_str = null_str};
             hashmap_iter(obj, &data, sprintentry);
             buf_append(b, "]", 1);
             return 0;
@@ -103,7 +104,7 @@ void sprintentry(entry* e, void* userdata) {
     const char* key = e->key;
     buf_append(data->b, key, strlen(key));
     buf_append(data->b, ":", 1);
-    sprintval(data->b, (json_value*)e->value);
+    sprintval(data->b, (json_value*)e->value, data->null_str);
     data->count++;
     if (data->count != data->len) {
         buf_append(data->b, " ", 1);
@@ -217,9 +218,13 @@ int func_len(template_arg_iter* iter, tracked_value* out) {
     return err;
 }
 
-int buf_print(template_arg_iter* iter, buf* b) {
+// urlquery uses <no value> to represent null values and
+// does not separate non-string values for some reason
+int buf_print(template_arg_iter* iter, buf* b, const char* null_str) {
     buf_init(b);
     size_t args_len = template_arg_iter_len(iter);
+    bool prev_str = true;
+    bool is_nil_str = strcmp(null_str, NULL_STR_NIL) == 0;
     for (size_t i = 0; i < args_len; i++) {
         tracked_value arg = TRACKED_NULL;
         int err = template_arg_iter_next(iter, &arg);
@@ -227,14 +232,15 @@ int buf_print(template_arg_iter* iter, buf* b) {
             buf_free(b);
             return err;
         }
-        err = sprintval(b, &arg.val);
+        if (is_nil_str && !prev_str && arg.val.ty != JSON_TY_STRING) {
+            buf_append(b, " ", 1);
+        }
+        prev_str = arg.val.ty == JSON_TY_STRING;
+        err = sprintval(b, &arg.val, null_str);
         tracked_value_free(&arg);
         if (err != 0) {
             buf_free(b);
             return err;
-        }
-        if (i != args_len - 1) {
-            buf_append(b, " ", 1);
         }
     }
     return 0;
@@ -242,7 +248,7 @@ int buf_print(template_arg_iter* iter, buf* b) {
 
 int func_print(template_arg_iter* iter, tracked_value* out) {
     buf b;
-    int err = buf_print(iter, &b);
+    int err = buf_print(iter, &b, NULL_STR_NIL);
     if (err != 0) {
         return err;
     }
@@ -255,7 +261,7 @@ int func_print(template_arg_iter* iter, tracked_value* out) {
 
 int func_println(template_arg_iter* iter, tracked_value* out) {
     buf b;
-    int err = buf_print(iter, &b);
+    int err = buf_print(iter, &b, NULL_STR_NIL);
     if (err != 0) {
         return err;
     }
@@ -643,6 +649,35 @@ int func_ge(template_arg_iter* iter, tracked_value* out) {
     return func_cmp(iter, out, CMP_OP_GE);
 }
 
+int func_urlquery(template_arg_iter* iter, tracked_value* out) {
+    buf print;
+    int err = buf_print(iter, &print, NULL_STR_NO_VALUE);
+    if (err) {
+        return err;
+    }
+    buf b;
+    buf_init(&b);
+    const char* extra = "-_.~";
+    for (size_t i = 0; i < print.len; i++) {
+        unsigned char c = print.data[i];
+        if (isalnum(c) || strchr(extra, c)) {
+            buf_append(&b, print.data + i, 1);
+        } else if (c == ' ') {
+            buf_append(&b, "+", 1);
+        } else {
+            char hex[4];
+            snprintf(hex, sizeof(hex), "%%%02X", c);
+            buf_append(&b, hex, 3);
+        }
+    }
+    buf_free(&print);
+    buf_append(&b, "", 1);
+    out->is_heap = true;
+    out->val.ty = JSON_TY_STRING;
+    out->val.inner.str = b.data;
+    return 0;
+}
+
 void funcmap_new(hashmap* map) {
     hashmap_new(map, hashmap_strcmp, hashmap_strlen, HASH_FUNC_DJB2);
     hashmap_insert(map, "not", func_not);
@@ -659,6 +694,7 @@ void funcmap_new(hashmap* map) {
     hashmap_insert(map, "le", func_le);
     hashmap_insert(map, "gt", func_gt);
     hashmap_insert(map, "ge", func_ge);
+    hashmap_insert(map, "urlquery", func_urlquery);
 }
 
 void funcmap_free(hashmap* map) {
