@@ -110,7 +110,7 @@ Syntactical issues in non-executed branches may not lead to an error.
 | -------- | ----------------------------------------------- |
 | and      | :white_check_mark:                              |
 | call     | :poop: (makes no sense for this implementation) |
-| html     | :x:                                             |
+| html     | :white_check_mark:                              |
 | index    | :white_check_mark:                              |
 | slice    | :white_check_mark:                              |
 | js       | :x:                                             |

@@ -39,6 +39,7 @@
 "lt"
 "le"
 "urlquery"
+"html"
 
 "\\b"
 "\\f"

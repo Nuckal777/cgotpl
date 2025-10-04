@@ -303,6 +303,10 @@ testcase '{{ lt "a" "b" }}' 'null'
 testcase '{{ urlquery . }}' 'null'
 testcase '{{ urlquery . . }}' 'null'
 testcase '{{ urlquery "some +file%.txt€a~" }}' 'null'
+testcase '{{ html . }}' 'null'
+testcase '{{ html . . }}' 'null'
+testcase "{{ html \`'\` }}" 'null'
+testcase '{{ html `<>&"` "abcde" }}' 'null'
 
 if [ $FAILS -ne 0 ]; then
     printf "\nencountered %d failures\n" $FAILS

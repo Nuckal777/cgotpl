@@ -773,6 +773,14 @@ nutest_result template_urlquery_nil(void) {
     return assert_eval_null("{{ urlquery nil }}", "%3Cno+value%3E");
 }
 
+nutest_result template_html_str(void) {
+    return assert_eval_null("{{ html `<>&'\"` `abc` }}", "&lt;&gt;&amp;&#39;&#34;abc");
+}
+
+nutest_result template_html_nil(void) {
+    return assert_eval_null("{{ html nil }}", "&lt;no value&gt;");
+}
+
 int main() {
     nutest_register(template_identity);
     nutest_register(template_empty_pipeline);
@@ -950,5 +958,7 @@ int main() {
     nutest_register(template_gt_mismatch_ty);
     nutest_register(template_urlquery_str);
     nutest_register(template_urlquery_nil);
+    nutest_register(template_html_str);
+    nutest_register(template_html_nil);
     return nutest_run();
 }

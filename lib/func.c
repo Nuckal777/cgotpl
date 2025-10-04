@@ -678,6 +678,48 @@ int func_urlquery(template_arg_iter* iter, tracked_value* out) {
     return 0;
 }
 
+int func_html(template_arg_iter* iter, tracked_value* out) {
+    buf print;
+    int err = buf_print(iter, &print, NULL_STR_NO_VALUE);
+    if (err) {
+        return err;
+    }
+    buf b;
+    buf_init(&b);
+    for (size_t i = 0; i < print.len; i++) {
+        char c = print.data[i];
+        switch (c) {
+            case 0:
+                buf_append(&b, "\\uFFFD", 6);
+                break;
+            case '<':
+                buf_append(&b, "&lt;", 4);
+                break;
+            case '>':
+                buf_append(&b, "&gt;", 4);
+                break;
+            case '"':
+                buf_append(&b, "&#34;", 5);
+                break;
+            case '\'':
+                buf_append(&b, "&#39;", 5);
+                break;
+            case '&':
+                buf_append(&b, "&amp;", 5);
+                break;
+            default:
+                buf_append(&b, &c, 1);
+                break;
+        }
+    }
+    buf_free(&print);
+    buf_append(&b, "", 1);
+    out->is_heap = true;
+    out->val.ty = JSON_TY_STRING;
+    out->val.inner.str = b.data;
+    return 0;
+}
+
 void funcmap_new(hashmap* map) {
     hashmap_new(map, hashmap_strcmp, hashmap_strlen, HASH_FUNC_DJB2);
     hashmap_insert(map, "not", func_not);
@@ -695,6 +737,7 @@ void funcmap_new(hashmap* map) {
     hashmap_insert(map, "gt", func_gt);
     hashmap_insert(map, "ge", func_ge);
     hashmap_insert(map, "urlquery", func_urlquery);
+    hashmap_insert(map, "html", func_html);
 }
 
 void funcmap_free(hashmap* map) {
