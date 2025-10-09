@@ -6,5 +6,6 @@
 
 // out needs to be at least 4 bytes
 void utf8_encode(int32_t cp, char* out, size_t* out_len);
+int32_t utf8_decode(const unsigned char* in, size_t in_len);
 
 #endif

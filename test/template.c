@@ -781,6 +781,18 @@ nutest_result template_html_nil(void) {
     return assert_eval_null("{{ html nil }}", "&lt;no value&gt;");
 }
 
+nutest_result template_js_str(void) {
+    return assert_eval_null("{{ js `<>&'\"` `ABC` }}", "\\u003C\\u003E\\u0026\\'\\\"ABC");
+}
+
+nutest_result template_js_nil(void) {
+    return assert_eval_null("{{ js nil }}", "\\u003Cno value\\u003E");
+}
+
+nutest_result template_js_utf8_roundtrip(void) {
+    return assert_eval_null("{{ js \"\\u00A0\" }}", "\\u00A0");
+}
+
 int main() {
     nutest_register(template_identity);
     nutest_register(template_empty_pipeline);
@@ -960,5 +972,8 @@ int main() {
     nutest_register(template_urlquery_nil);
     nutest_register(template_html_str);
     nutest_register(template_html_nil);
+    nutest_register(template_js_str);
+    nutest_register(template_js_nil);
+    nutest_register(template_js_utf8_roundtrip);
     return nutest_run();
 }

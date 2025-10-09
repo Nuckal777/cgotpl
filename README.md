@@ -106,27 +106,27 @@ Syntactical issues in non-executed branches may not lead to an error.
 
 ## Functions
 
-| Function | State                                           |
-| -------- | ----------------------------------------------- |
-| and      | :white_check_mark:                              |
-| call     | :poop: (makes no sense for this implementation) |
-| html     | :white_check_mark:                              |
-| index    | :white_check_mark:                              |
-| slice    | :white_check_mark:                              |
-| js       | :x:                                             |
-| len      | :white_check_mark:                              |
-| not      | :white_check_mark:                              |
-| or       | :white_check_mark:                              |
-| print    | :white_check_mark:                              |
-| printf   | :x:                                             |
-| println  | :white_check_mark:                              |
-| urlquery | :white_check_mark:                              |
-| eq       | :white_check_mark:                              |
-| ne       | :white_check_mark:                              |
-| lt       | :white_check_mark:                              |
-| le       | :white_check_mark:                              |
-| gt       | :white_check_mark:                              |
-| ge       | :white_check_mark:                              |
+| Function | State                                              |
+| -------- | -------------------------------------------------- |
+| and      | :white_check_mark:                                 |
+| call     | :poop: (makes no sense for this implementation)    |
+| html     | :white_check_mark:                                 |
+| index    | :white_check_mark:                                 |
+| slice    | :white_check_mark:                                 |
+| js       | :construction: (no check for printable codepoints) |
+| len      | :white_check_mark:                                 |
+| not      | :white_check_mark:                                 |
+| or       | :white_check_mark:                                 |
+| print    | :white_check_mark:                                 |
+| printf   | :x:                                                |
+| println  | :white_check_mark:                                 |
+| urlquery | :white_check_mark:                                 |
+| eq       | :white_check_mark:                                 |
+| ne       | :white_check_mark:                                 |
+| lt       | :white_check_mark:                                 |
+| le       | :white_check_mark:                                 |
+| gt       | :white_check_mark:                                 |
+| ge       | :white_check_mark:                                 |
 
 The c and go standard library may disagree on certain formatting (`printf`) corner-cases.
 This implementation cannot check for the correct upper bound on capacity for the 3-index slice function on arrays as a slice's capacity depends on implementation details of the go runtime.

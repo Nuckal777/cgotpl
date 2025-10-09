@@ -302,7 +302,7 @@ int template_parse_regular_str(stream* in, char** out) {
                                 err = ERR_TEMPLATE_INVALID_ESCAPE;
                                 goto cleanup;
                             }
-                            if (!((cp[0] >= '0' && cp[0] <= '9') || (cp[0] >= 'a' && cp[0] <= 'f'))) {
+                            if (!((cp[0] >= '0' && cp[0] <= '9') || (cp[0] >= 'a' && cp[0] <= 'f') || (cp[0] >= 'A' && cp[0] <= 'F'))) {
                                 err = ERR_TEMPLATE_INVALID_ESCAPE;
                                 goto cleanup;
                             }

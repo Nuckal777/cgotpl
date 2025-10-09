@@ -307,6 +307,12 @@ testcase '{{ html . }}' 'null'
 testcase '{{ html . . }}' 'null'
 testcase "{{ html \`'\` }}" 'null'
 testcase '{{ html `<>&"` "abcde" }}' 'null'
+testcase '{{ js . }}' 'null'
+testcase '{{ js . . }}' 'null'
+testcase '{{ js "\u00A0" }}' 'null' # no break space
+testcase '{{ js "\u2000" }}' 'null' # en quad
+testcase '{{ js `\"<>&=` "ABCDE" }}' 'null'
+testcase "{{ js \`'\` }}" 'null'
 
 if [ $FAILS -ne 0 ]; then
     printf "\nencountered %d failures\n" $FAILS

@@ -9,6 +9,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "encode.h"
+#include "stream.h"
+
 void tracked_value_free(tracked_value* val) {
     if (val->is_heap) {
         json_value_free(&val->val);
@@ -720,6 +723,70 @@ int func_html(template_arg_iter* iter, tracked_value* out) {
     return 0;
 }
 
+int func_js(template_arg_iter* iter, tracked_value* out) {
+    buf print;
+    int err = buf_print(iter, &print, NULL_STR_NO_VALUE);
+    if (err) {
+        return err;
+    }
+    stream st;
+    stream_open_memory(&st, print.data, print.len);
+    buf b;
+    buf_init(&b);
+    unsigned char cp[4];
+    size_t cp_len;
+    while (!(err = stream_next_utf8_cp(&st, cp, &cp_len))) {
+        if (cp_len == 1) {
+            switch (cp[0]) {
+                case '\\':
+                    buf_append(&b, "\\\\", 2);
+                    continue;
+                case '\'':
+                    buf_append(&b, "\\'", 2);
+                    continue;
+                case '"':
+                    buf_append(&b, "\\\"", 2);
+                    continue;
+                case '<':
+                    buf_append(&b, "\\u003C", 6);
+                    continue;
+                case '>':
+                    buf_append(&b, "\\u003E", 6);
+                    continue;
+                case '&':
+                    buf_append(&b, "\\u0026", 6);
+                    continue;
+                case '=':
+                    buf_append(&b, "\\u003D", 6);
+                    continue;
+            }
+            if (cp[0] >= ' ') {
+                buf_append(&b, (const char*)cp, 1);
+                continue;
+            }
+            char hex[7];
+            snprintf(hex, sizeof(hex), "\\u00%02X", cp[0]);
+            buf_append(&b, hex, sizeof(hex) - 1);
+            continue;
+        }
+        int32_t codepoint = utf8_decode(cp, cp_len);
+        char hex[7];
+        snprintf(hex, sizeof(hex), "\\u%04X", codepoint);
+        buf_append(&b, hex, sizeof(hex) - 1);
+    }
+    stream_close(&st);
+    buf_free(&print);
+    buf_append(&b, "", 1);
+    if (err != 0 && err != EOF) {
+        buf_free(&b);
+        return err;
+    }
+    out->is_heap = true;
+    out->val.ty = JSON_TY_STRING;
+    out->val.inner.str = b.data;
+    return 0;
+}
+
 void funcmap_new(hashmap* map) {
     hashmap_new(map, hashmap_strcmp, hashmap_strlen, HASH_FUNC_DJB2);
     hashmap_insert(map, "not", func_not);
@@ -738,6 +805,7 @@ void funcmap_new(hashmap* map) {
     hashmap_insert(map, "ge", func_ge);
     hashmap_insert(map, "urlquery", func_urlquery);
     hashmap_insert(map, "html", func_html);
+    hashmap_insert(map, "js", func_js);
 }
 
 void funcmap_free(hashmap* map) {
