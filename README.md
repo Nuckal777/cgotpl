@@ -118,7 +118,7 @@ Syntactical issues in non-executed branches may not lead to an error.
 | not      | :white_check_mark:                                 |
 | or       | :white_check_mark:                                 |
 | print    | :white_check_mark:                                 |
-| printf   | :x:                                                |
+| printf   | :construction: (many missing features, see below)  |
 | println  | :white_check_mark:                                 |
 | urlquery | :white_check_mark:                                 |
 | eq       | :white_check_mark:                                 |
@@ -128,8 +128,15 @@ Syntactical issues in non-executed branches may not lead to an error.
 | gt       | :white_check_mark:                                 |
 | ge       | :white_check_mark:                                 |
 
-The c and go standard library may disagree on certain formatting (`printf`) corner-cases.
 This implementation cannot check for the correct upper bound on capacity for the 3-index slice function on arrays as a slice's capacity depends on implementation details of the go runtime.
+
+### printf
+
+The following set of plain format specifiers is supported: `%e, %E, %f, %F, %g, %s, %t, %v, %x and %X`.
+cgotpl doesn't implement any support for configuring signs, padding, minimum widths and precision.
+All numbers are internally stored as double values, which can leads to corner-cases if mismatched values are passed to a specifier.
+In addition the c and go standard library may disagree on certain formatting (`printf`) corner-cases, e.g. hexadecimal formatting of float exponents.
+Sorry, I don't plan to write a full fledged `printf` implementation, right now.
 
 ## Why?
 

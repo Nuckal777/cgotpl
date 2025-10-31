@@ -313,6 +313,24 @@ testcase '{{ js "\u00A0" }}' 'null' # no break space
 testcase '{{ js "\u2000" }}' 'null' # en quad
 testcase '{{ js `\"<>&=` "ABCDE" }}' 'null'
 testcase "{{ js \`'\` }}" 'null'
+testcase '{{ printf "%v" . }}' 'null'
+testcase '{{ printf "%v%s" . }}' 'null'
+testcase '{{ printf "%v" }}' 'null'
+testcase '{{ printf "%v" . }}' 'true'
+testcase '{{ printf "%v" . }}' 'false'
+testcase '{{ printf "%v" . }}' '"abcde"'
+testcase '{{ printf "%v" . }}' '43.125'
+testcase '{{ printf "%v" . }}' '["a",5,"q"]'
+testcase '{{ printf "%v" . }}' '{"1":"2","0":4}'
+testcase '{{ printf "x%sz" . }}' '"y"'
+testcase '{{ printf "x%ez" . }}' '32.625'
+testcase '{{ printf "x%fz" . }}' '32.625'
+testcase '{{ printf "x%gz" . }}' '32.625'
+testcase '{{ printf "x%xz" . }}' '33332.625'
+testcase '{{ printf "%z" . }}' 'null'
+testcase '{{ printf "%s" . }}' '[{"a":3.5}, {"c":true}, [false, null]]'
+testcase '{{ printf "%e" . }}' '[{"a":3.5}, {"c":true}, [false, null]]'
+testcase '{{ printf "%t%t" true false }}' 'null'
 
 if [ $FAILS -ne 0 ]; then
     printf "\nencountered %d failures\n" $FAILS

@@ -6,10 +6,13 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "encode.h"
+#include "json.h"
+#include "map.h"
 #include "stream.h"
 
 void tracked_value_free(tracked_value* val) {
@@ -729,10 +732,10 @@ int func_js(template_arg_iter* iter, tracked_value* out) {
     if (err) {
         return err;
     }
-    stream st;
-    stream_open_memory(&st, print.data, print.len);
     buf b;
     buf_init(&b);
+    stream st;
+    stream_open_memory(&st, print.data, print.len);
     unsigned char cp[4];
     size_t cp_len;
     while (!(err = stream_next_utf8_cp(&st, cp, &cp_len))) {
@@ -776,15 +779,235 @@ int func_js(template_arg_iter* iter, tracked_value* out) {
     }
     stream_close(&st);
     buf_free(&print);
-    buf_append(&b, "", 1);
     if (err != 0 && err != EOF) {
         buf_free(&b);
         return err;
     }
+    buf_append(&b, "", 1);
     out->is_heap = true;
     out->val.ty = JSON_TY_STRING;
     out->val.inner.str = b.data;
     return 0;
+}
+
+int format_mismatched_primitive(buf* b, const char* format, json_value* val) {
+    size_t format_len = strlen(format);
+    if (format_len == 0) {
+        return ERR_FUNC_INVALID_ARG_VAL;
+    }
+    if (val->ty == JSON_TY_NULL) {
+        buf_append(b, "<nil>", 5);
+        return 0;
+    }
+    buf_append(b, "%!", 2);
+    buf_append(b, format + format_len - 1, 1);
+    buf_append(b, "(", 1);
+    switch (val->ty) {
+        case JSON_TY_TRUE:
+            buf_append(b, "bool=true)", 10);
+            return 0;
+        case JSON_TY_FALSE:
+            buf_append(b, "bool=false)", 11);
+            return 0;
+        case JSON_TY_STRING:
+            buf_append(b, "string=", 7);
+            break;
+        case JSON_TY_NUMBER:
+            buf_append(b, "float64=", 8);
+            break;
+        default:
+            assert(0);
+            break;
+    }
+    sprintval(b, val, NULL_STR_NIL);
+    buf_append(b, ")", 1);
+    return 0;
+}
+
+int format_number(buf* b, const char* format, json_value* val) {
+    if (val->ty != JSON_TY_NUMBER) {
+        return format_mismatched_primitive(b, format, val);
+    }
+    char buf[128];
+    size_t expected = snprintf(buf, sizeof(buf), format, val->inner.num);
+    if (expected > sizeof(buf) - 1) {
+        return ERR_BUF_OVERFLOW;
+    }
+    buf_append(b, buf, expected);
+    return 0;
+}
+
+int format_value(buf* b, char specifier, json_value* val);
+
+typedef struct {
+    buf* buf;
+    size_t idx;
+    size_t count;
+    char specifier;
+} format_entry_data;
+
+void format_entry(entry* e, void* userdata) {
+    format_entry_data* data = (format_entry_data*)userdata;
+    json_value key_val = {.ty = JSON_TY_STRING};
+    key_val.inner.str = e->key;
+    format_value(data->buf, data->specifier, &key_val);
+    buf_append(data->buf, ":", 1);
+    format_value(data->buf, data->specifier, e->value);
+    if (data->idx != data->count - 1) {   
+        buf_append(data->buf, " ", 1);
+    }
+    data->idx++;
+}
+
+int format_value(buf* b, char specifier, json_value* val) {
+    int err = 0;
+    if (specifier == 'v') {
+        return sprintval(b, val, NULL_STR_NIL);
+    }
+    if (val->ty == JSON_TY_ARRAY) {
+        buf_append(b, "[", 1);
+        json_array arr = val->inner.arr;
+        for (size_t i = 0; i < arr.len; i++) {
+            err = format_value(b, specifier, arr.data + i);
+            if (err) {
+                return err;
+            }
+            if (i != arr.len - 1) {
+                buf_append(b, " ", 1);
+            }
+        }
+        buf_append(b, "]", 1);
+        return 0;
+    }
+    if (val->ty == JSON_TY_OBJECT) {
+        buf_append(b, "map[", 4);
+        format_entry_data data = {.buf = b, .idx = 0, .count = val->inner.obj.count, .specifier = specifier};
+        hashmap_iter(&val->inner.obj, &data, format_entry);
+        buf_append(b, "]", 1);
+        return 0;
+    }
+    switch (specifier) {
+        case 'e':
+            err = format_number(b, "%e", val);
+            return err;
+        case 'E':
+            err = format_number(b, "%E", val);
+            return err;
+        case 'f':
+        case 'F':
+            err = format_number(b, "%f", val);
+            return err;
+        case 'g':
+            err = format_number(b, "%g", val);
+            return err;
+        case 's':
+            if (val->ty != JSON_TY_STRING) {
+                return format_mismatched_primitive(b, "%s", val);
+            }
+            const char* current_str = val->inner.str;
+            buf_append(b, current_str, strlen(current_str));
+            return err;
+        case 't':
+            if (val->ty == JSON_TY_TRUE) {
+                buf_append(b, "true", 4);
+                return 0;
+            }
+            if (val->ty == JSON_TY_FALSE) {
+                buf_append(b, "false", 5);
+                return 0;
+            }
+            return format_mismatched_primitive(b, "%b", val);
+        case 'x':
+            err = format_number(b, "%a", val);
+            return err;
+        case 'X':
+            err = format_number(b, "%A", val);
+            return err;
+        default:
+            buf_append(b, "%!", 2);
+            buf_append(b, &specifier, 1);
+            buf_append(b, "(", 1);
+            err = sprintval(b, val, NULL_STR_NIL);
+            if (err) {
+                return err;
+            }
+            buf_append(b, ")", 1);
+            return err;
+    }
+    return 0;
+}
+
+int func_printf(template_arg_iter* iter, tracked_value* out) {
+    size_t args_remain = template_arg_iter_len(iter);
+    if (args_remain == 0) {
+        return ERR_FUNC_INVALID_ARG_LEN;
+    }
+    tracked_value format_val = TRACKED_NULL;
+    int err = template_arg_iter_next(iter, &format_val);
+    if (err) {
+        return err;
+    }
+    args_remain--;
+    if (format_val.val.ty != JSON_TY_STRING) {
+        tracked_value_free(&format_val);
+        return ERR_FUNC_INVALID_ARG_TYPE;
+    }
+    const char* format = format_val.val.inner.str;
+    buf b;
+    buf_init(&b);
+    stream st;
+    stream_open_memory(&st, format, strlen(format));
+    unsigned char cp[4];
+    size_t cp_len;
+    while (!(err = stream_next_utf8_cp(&st, cp, &cp_len))) {
+        if (cp_len != 1 || cp[0] != '%') {
+            buf_append(&b, (const char*)cp, cp_len);
+            continue;
+        }
+        err = stream_next_utf8_cp(&st, cp, &cp_len);
+        if (err) {
+            goto cleanup;
+        }
+        if (cp_len != 1) {
+            err = ERR_FUNC_INVALID_ARG_VAL;
+            goto cleanup;
+        }
+        if (cp[0] == '%') {
+            buf_append(&b, "%", 1);
+            continue;
+        }
+        if (args_remain == 0) {
+            buf_append(&b, "%!", 2);
+            buf_append(&b, (const char*)cp, 1);
+            buf_append(&b, "(MISSING)", 9);
+            continue;
+        }
+        tracked_value current = TRACKED_NULL;
+        err = template_arg_iter_next(iter, &current);
+        if (err) {
+            goto cleanup;
+        }
+        args_remain--;
+        err = format_value(&b, cp[0], &current.val);
+        tracked_value_free(&current);
+        if (err) {
+            goto cleanup;
+        }
+    }
+    if (err == EOF) {
+        err = 0;
+    }
+    buf_append(&b, "", 1);
+    out->is_heap = true;
+    out->val.ty = JSON_TY_STRING;
+    out->val.inner.str = b.data;
+cleanup:
+    stream_close(&st);
+    if (err != 0) {
+        buf_free(&b);
+    }
+    tracked_value_free(&format_val);
+    return err;
 }
 
 void funcmap_new(hashmap* map) {
@@ -806,6 +1029,7 @@ void funcmap_new(hashmap* map) {
     hashmap_insert(map, "urlquery", func_urlquery);
     hashmap_insert(map, "html", func_html);
     hashmap_insert(map, "js", func_js);
+    hashmap_insert(map, "printf", func_printf);
 }
 
 void funcmap_free(hashmap* map) {

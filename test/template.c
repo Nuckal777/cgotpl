@@ -793,6 +793,42 @@ nutest_result template_js_utf8_roundtrip(void) {
     return assert_eval_null("{{ js \"\\u00A0\" }}", "\\u00A0");
 }
 
+nutest_result template_printf_e(void) {
+    return assert_eval_null("{{ printf `%e %E` 2000 3000 }}", "2.000000e+03 3.000000E+03");
+}
+
+nutest_result template_printf_f(void) {
+    return assert_eval_null("{{ printf `%f %F` 157.5 751.125 }}", "157.500000 751.125000");
+}
+
+nutest_result template_printf_g(void) {
+    return assert_eval_null("{{ printf `%g` 623.75 }}", "623.75");
+}
+
+nutest_result template_printf_s(void) {
+    return assert_eval_null("{{ printf `%s%s%s` `a` `c` `b` }}", "acb");
+}
+
+nutest_result template_printf_t(void) {
+    return assert_eval_null("{{ printf `%t%t` false true }}", "falsetrue");
+}
+
+nutest_result template_printf_v(void) {
+    return assert_eval_data("{{ printf `%v` . }}", "[2,4,8]", "[2 4 8]");
+}
+
+nutest_result template_printf_x(void) {
+    return assert_eval_null("{{ printf `%x %X` 8.5 16.75 }}", "0x1.1p+3 0X1.0CP+4");
+}
+
+nutest_result template_printf_missing(void) {
+    return assert_eval_null("{{ printf `%s` }}", "%!s(MISSING)");
+}
+
+nutest_result template_printf_complex(void) {
+    return assert_eval_data("{{ printf `%s` . }}", "[{\"a\":3.5}, {\"b\":true}, [false, null]]", "[map[a:%!s(float64=3.5)] map[b:%!s(bool=true)] [%!s(bool=false) <nil>]]");
+}
+
 int main() {
     nutest_register(template_identity);
     nutest_register(template_empty_pipeline);
@@ -975,5 +1011,14 @@ int main() {
     nutest_register(template_js_str);
     nutest_register(template_js_nil);
     nutest_register(template_js_utf8_roundtrip);
+    nutest_register(template_printf_e);
+    nutest_register(template_printf_f);
+    nutest_register(template_printf_g);
+    nutest_register(template_printf_s);
+    nutest_register(template_printf_t);
+    nutest_register(template_printf_v);
+    nutest_register(template_printf_x);
+    nutest_register(template_printf_missing);
+    nutest_register(template_printf_complex);
     return nutest_run();
 }

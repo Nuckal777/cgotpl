@@ -24,6 +24,7 @@
 "("
 ")"
 "|"
+"%"
 
 "not"
 "and"
@@ -41,6 +42,7 @@
 "urlquery"
 "html"
 "js"
+"printf"
 
 "\\b"
 "\\f"
