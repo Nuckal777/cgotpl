@@ -132,7 +132,7 @@ This implementation cannot check for the correct upper bound on capacity for the
 
 ### printf
 
-The following set of plain format specifiers is supported: `%e, %E, %f, %F, %g, %s, %t, %v, %x and %X`.
+The following set of plain format specifiers is supported: `%e, %E, %f, %F, %g, %q, %s, %t, %v, %x and %X`.
 cgotpl doesn't implement any support for configuring signs, padding, minimum widths and precision.
 All numbers are internally stored as double values, which can leads to corner-cases if mismatched values are passed to a specifier.
 In addition the c and go standard library may disagree on certain formatting (`printf`) corner-cases, e.g. hexadecimal formatting of float exponents.

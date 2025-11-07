@@ -805,6 +805,10 @@ nutest_result template_printf_g(void) {
     return assert_eval_null("{{ printf `%g` 623.75 }}", "623.75");
 }
 
+nutest_result template_printf_q(void) {
+    return assert_eval_null("{{ printf `%q` `a\"b` }}", "\"a\\\"b\"");
+}
+
 nutest_result template_printf_s(void) {
     return assert_eval_null("{{ printf `%s%s%s` `a` `c` `b` }}", "acb");
 }
@@ -819,6 +823,10 @@ nutest_result template_printf_v(void) {
 
 nutest_result template_printf_x(void) {
     return assert_eval_null("{{ printf `%x %X` 8.5 16.75 }}", "0x1.1p+3 0X1.0CP+4");
+}
+
+nutest_result template_printf_x_str(void) {
+    return assert_eval_null("{{ printf `%x %X` `z` `z` }}", "7a 7A");
 }
 
 nutest_result template_printf_missing(void) {
@@ -1014,10 +1022,12 @@ int main() {
     nutest_register(template_printf_e);
     nutest_register(template_printf_f);
     nutest_register(template_printf_g);
+    nutest_register(template_printf_q);
     nutest_register(template_printf_s);
     nutest_register(template_printf_t);
     nutest_register(template_printf_v);
     nutest_register(template_printf_x);
+    nutest_register(template_printf_x_str);
     nutest_register(template_printf_missing);
     nutest_register(template_printf_complex);
     return nutest_run();

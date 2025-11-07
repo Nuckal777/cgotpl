@@ -327,10 +327,16 @@ testcase '{{ printf "x%ez" . }}' '32.625'
 testcase '{{ printf "x%fz" . }}' '32.625'
 testcase '{{ printf "x%gz" . }}' '32.625'
 testcase '{{ printf "x%xz" . }}' '33332.625'
+testcase '{{ printf "%x" . }}' '"z"'
+testcase '{{ printf "%X" . }}' '"z"'
 testcase '{{ printf "%z" . }}' 'null'
 testcase '{{ printf "%s" . }}' '[{"a":3.5}, {"c":true}, [false, null]]'
 testcase '{{ printf "%e" . }}' '[{"a":3.5}, {"c":true}, [false, null]]'
 testcase '{{ printf "%t%t" true false }}' 'null'
+testcase '{{ printf "%q" . }}' '"abcde"'
+testcase '{{ printf "%q" . }}' '"abc\"de"'
+testcase '{{ printf "%q" . }}' '22.5'
+testcase '{{ printf "%q" . }}' '80'
 
 if [ $FAILS -ne 0 ]; then
     printf "\nencountered %d failures\n" $FAILS

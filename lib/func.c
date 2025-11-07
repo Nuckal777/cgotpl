@@ -888,18 +888,30 @@ int format_value(buf* b, char specifier, json_value* val) {
     }
     switch (specifier) {
         case 'e':
-            err = format_number(b, "%e", val);
-            return err;
+            return format_number(b, "%e", val);
         case 'E':
-            err = format_number(b, "%E", val);
-            return err;
+            return format_number(b, "%E", val);
         case 'f':
         case 'F':
-            err = format_number(b, "%f", val);
-            return err;
+            return format_number(b, "%f", val);
         case 'g':
-            err = format_number(b, "%g", val);
-            return err;
+            return format_number(b, "%g", val);
+        case 'q':
+            if (val->ty != JSON_TY_STRING) {
+                return format_mismatched_primitive(b, "%q", val);
+            }
+            buf_append(b, "\"", 1);
+            char* str = val->inner.str;
+            while (*str != 0) {
+                if (*str == '"') {
+                    buf_append(b, "\\\"", 2);
+                } else {
+                    buf_append(b, str, 1);
+                }
+                str++;
+            }
+            buf_append(b, "\"", 1);
+            return 0;
         case 's':
             if (val->ty != JSON_TY_STRING) {
                 return format_mismatched_primitive(b, "%s", val);
@@ -918,11 +930,29 @@ int format_value(buf* b, char specifier, json_value* val) {
             }
             return format_mismatched_primitive(b, "%b", val);
         case 'x':
-            err = format_number(b, "%a", val);
-            return err;
+            if (val->ty == JSON_TY_STRING) {
+                char buf[3];
+                char* str = val->inner.str;
+                while (*str != 0) {
+                    snprintf(buf, sizeof(buf), "%x", *str);
+                    buf_append(b, buf, 2);
+                    str++;
+                }
+                return 0;
+            }
+            return format_number(b, "%a", val);
         case 'X':
-            err = format_number(b, "%A", val);
-            return err;
+            if (val->ty == JSON_TY_STRING) {
+                char buf[3];
+                char* str = val->inner.str;
+                while (*str != 0) {
+                    snprintf(buf, sizeof(buf), "%X", *str);
+                    buf_append(b, buf, 2);
+                    str++;
+                }
+                return 0;
+            }
+            return format_number(b, "%A", val);
         default:
             buf_append(b, "%!", 2);
             buf_append(b, &specifier, 1);
