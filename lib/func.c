@@ -1024,8 +1024,13 @@ int func_printf(template_arg_iter* iter, tracked_value* out) {
             goto cleanup;
         }
     }
-    if (err == EOF) {
-        err = 0;
+    switch (err) {
+        case 0:
+        case EOF:
+            err = 0;
+            break;
+        default:
+            goto cleanup;
     }
     buf_append(&b, "", 1);
     out->is_heap = true;
@@ -1033,7 +1038,7 @@ int func_printf(template_arg_iter* iter, tracked_value* out) {
     out->val.inner.str = b.data;
 cleanup:
     stream_close(&st);
-    if (err != 0) {
+    if (err) {
         buf_free(&b);
     }
     tracked_value_free(&format_val);

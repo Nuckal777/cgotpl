@@ -591,6 +591,7 @@ int template_parse_value(stream* in, state* state, tracked_value* result, unsign
 
 #define TEMPLATE_PARSE_EXPR_NO_VAR_MUT 0x01
 #define TEMPLATE_PARSE_EXPR_NO_PIPE 0x02
+#define TEMPLATE_PARSE_EXPR_FORCE_SPACE 0x04
 
 int template_parse_expr(stream* in, state* state, tracked_value* result, int flags);
 
@@ -744,7 +745,25 @@ int template_parse_pipe(stream* in, state* state, tracked_value* result) {
 int template_parse_expr(stream* in, state* state, tracked_value* result, int flags) {
     unsigned char cp[4];
     size_t cp_len;
-    int err = template_next_nonspace(in, cp, &cp_len);
+    int err = 0;
+    if (flags & TEMPLATE_PARSE_EXPR_FORCE_SPACE) {
+        err = stream_next_utf8_cp(in, cp, &cp_len);
+        if (err) {
+            return err;
+        }
+        if (cp_len != 1) {
+            return ERR_TEMPLATE_INVALID_SYNTAX;
+        }
+        // at least past certain keywords a parenthesis is allowed as well
+        if (cp[0] != '(' && !isspace(cp[0])) {
+            return ERR_TEMPLATE_INVALID_SYNTAX;
+        }
+        if (cp[0] != '(') {
+            err = template_next_nonspace(in, cp, &cp_len);
+        }
+    } else {
+        err = template_next_nonspace(in, cp, &cp_len);
+    }
     if (err != 0) {
         return err;
     }
@@ -883,7 +902,14 @@ int template_parse_noop_ident(stream* in, state* state, char leading) {
 int template_parse_define_name(stream* in, char** name) {
     unsigned char cp[4];
     size_t cp_len;
-    int err = template_next_nonspace(in, cp, &cp_len);
+    int err = stream_next_utf8_cp(in, cp, &cp_len);
+    if (err) {
+        return err;
+    }
+    if (cp_len != 1 || !isspace(cp[0])) {
+        return ERR_TEMPLATE_INVALID_SYNTAX;
+    }
+    err = template_next_nonspace(in, cp, &cp_len);
     if (err != 0) {
         return err;
     }
@@ -1202,7 +1228,7 @@ int template_if(stream* in, state* state) {
     while (true) {
         stack_push_frame(&state->stack);
         tracked_value cond = TRACKED_NULL;
-        int err = template_parse_expr(in, state, &cond, 0);
+        int err = template_parse_expr(in, state, &cond, TEMPLATE_PARSE_EXPR_FORCE_SPACE);
         if (err != 0) {
             tracked_value_free(&cond);
             stack_pop_frame(&state->stack);
@@ -1293,8 +1319,22 @@ int template_parse_range_params(state* state, stream* in, range_params* params) 
     // start post range keyword
     unsigned char cp[4];
     size_t cp_len;
-    int err = template_next_nonspace(in, cp, &cp_len);
-    if (err != 0) {
+    int err = stream_next_utf8_cp(in, cp, &cp_len);
+    if (err) {
+        goto cleanup;
+    }
+    if (cp_len != 1) {
+        err = ERR_TEMPLATE_INVALID_SYNTAX;
+        goto cleanup;
+    }
+    if (cp[0] != '$' && cp[0] != '(' && !isspace(cp[0])) {
+        err = ERR_TEMPLATE_INVALID_SYNTAX;
+        goto cleanup;
+    }
+    if (cp[0] != '(') {
+        err = template_next_nonspace(in, cp, &cp_len);
+    }
+    if (err) {
         goto cleanup;
     }
     if (cp_len != 1) {
@@ -1634,7 +1674,7 @@ int template_with(stream* in, state* state) {
     while (true) {
         stack_push_frame(&state->stack);
         tracked_value arg = TRACKED_NULL;
-        int err = template_parse_expr(in, state, &arg, 0);
+        int err = template_parse_expr(in, state, &arg, TEMPLATE_PARSE_EXPR_FORCE_SPACE);
         if (err == ERR_TEMPLATE_KEY_UNKNOWN) {
             arg = TRACKED_NULL;
             err = 0;
@@ -1788,9 +1828,16 @@ int template_template(stream* in, state* state) {
     }
     tracked_value arg = TRACKED_NULL;
     err = template_parse_expr(in, state, &arg, 0);
-    if (err != 0) {
-        tracked_value_free(&arg);
-        goto cleanup;
+    switch (err) {
+        case 0:
+            break;
+        case ERR_TEMPLATE_NO_VALUE:
+            tracked_value_free(&arg);
+            arg = TRACKED_NULL;
+            break;
+        default:
+            tracked_value_free(&arg);
+            goto cleanup;
     }
     long current_pos;
     err = stream_pos(in, &current_pos);
@@ -2199,7 +2246,6 @@ int template_dispatch_pipeline(stream* in, state* state, tracked_value* result) 
         }
         return template_parse_pipe(in, state, result);
     }
-    // once here nothing of meaning was parsed
     return ERR_TEMPLATE_INVALID_SYNTAX;
 }
 

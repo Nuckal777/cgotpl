@@ -578,7 +578,7 @@ nutest_result template_define_nested(void) {
 }
 
 nutest_result template_template_no_val(void) {
-    return assert_eval_err("{{ define `cba` }}zyx{{ end }}{{ template `cba` }}", ERR_TEMPLATE_NO_VALUE);
+    return assert_eval_null("{{ define `cba` }}zyx{{ end }}{{ template `cba` }}", "zyx");
 }
 
 nutest_result template_template_unknown(void) {
