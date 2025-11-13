@@ -986,14 +986,11 @@ int template_skip_expr(stream* in, long* start_pos) {
             continue;
         }
         if (depth == 0) {
-            if (isspace(cp[0])) {
-                return 0;
+            if (isspace(cp[0]) || cp[0] == ')' || cp[0] == '|') {
+                return stream_seek(in, -cp_len);
             }
             if (cp[0] == '"' || cp[0] == '`') {
                 return ERR_TEMPLATE_INVALID_SYNTAX;
-            }
-            if (cp[0] == ')' || cp[0] == '|') {
-                return stream_seek(in, -cp_len);
             }
         }
         if (cp[0] == ')') {
@@ -1039,6 +1036,14 @@ int template_pipeline_noop_register_block(stream* in, state* state) {
     }
     unsigned char cp[4];
     size_t cp_len;
+    err = stream_next_utf8_cp(in, cp, &cp_len);
+    if (err) {
+        goto cleanup;
+    }
+    if (cp_len != 1 || !isspace(cp[0])) {
+        err = ERR_TEMPLATE_INVALID_SYNTAX;
+        goto cleanup;
+    }
     err = template_skip_whitespace(in);
     if (err) {
         goto cleanup;
@@ -1826,6 +1831,16 @@ int template_template(stream* in, state* state) {
         err = ERR_TEMPLATE_DEFINE_UNKNOWN;
         goto cleanup;
     }
+    unsigned char cp[4];
+    size_t cp_len;
+    err = stream_next_utf8_cp(in, cp, &cp_len);
+    if (err) {
+        goto cleanup;
+    }
+    if (cp_len != 1 || !isspace(cp[0])) {
+        err = ERR_TEMPLATE_INVALID_SYNTAX;
+        goto cleanup;
+    }
     tracked_value arg = TRACKED_NULL;
     err = template_parse_expr(in, state, &arg, 0);
     switch (err) {
@@ -1877,6 +1892,16 @@ int template_block(stream* in, state* state) {
     int err = template_parse_define_name(in, &name);
     if (err) {
         return err;
+    }
+    unsigned char cp[4];
+    size_t cp_len;
+    err = stream_next_utf8_cp(in, cp, &cp_len);
+    if (err) {
+        goto cleanup;
+    }
+    if (cp_len != 1 || !isspace(cp[0])) {
+        err = ERR_TEMPLATE_INVALID_SYNTAX;
+        goto cleanup;
     }
     tracked_value arg = TRACKED_NULL;
     err = template_parse_expr(in, state, &arg, 0);
@@ -2081,7 +2106,25 @@ int template_dispatch_func(stream* in, state* state, tracked_value* piped, track
     char func_name[STATE_IDENT_CAP];
     strcpy(func_name, state->ident);
     long pre_end;
+    unsigned char cp[4];
+    size_t cp_len;
     while (true) {
+        err = stream_next_utf8_cp(in, cp, &cp_len);
+        if (err) {
+            goto cleanup;
+        }
+        if (cp_len != 1) {
+            err = ERR_TEMPLATE_INVALID_SYNTAX;
+            goto cleanup;
+        }
+        if (!(isspace(cp[0]) || cp[0] == ')' || cp[0] == '}' || cp[0] == '|')) {
+            err = ERR_TEMPLATE_INVALID_SYNTAX;
+            goto cleanup;
+        }
+        err = stream_seek(in, -cp_len);
+        if (err) {
+            goto cleanup;
+        }
         if (iter.args_len == TEMPLATE_FUNC_ARGS_MAX) {
             err = ERR_BUF_OVERFLOW;
             goto cleanup;
