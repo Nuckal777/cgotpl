@@ -165,7 +165,7 @@ int json_parse_str(stream* st, char** out, size_t* out_cap) {
     unsigned char escaped_cp[5];
     while (true) {
         err = stream_next_utf8_cp(st, cp, &cp_len);
-        if (err != 0) {
+        if (err) {
             goto cleanup;
         }
         if (escaped) {
@@ -197,7 +197,7 @@ int json_parse_str(stream* st, char** out, size_t* out_cap) {
                 case 'u':
                     for (size_t i = 0; i < 4; i++) {
                         err = stream_next_utf8_cp(st, cp, &cp_len);
-                        if (err != 0) {
+                        if (err) {
                             goto cleanup;
                         }
                         if (cp_len != 1) {
@@ -270,7 +270,7 @@ int json_parse_pos_number(stream* st, char first, double* out, char* last) {
             *last = JSON_NO_LAST_CHAR;
             return 0;
         }
-        if (err != 0) {
+        if (err) {
             return err;
         }
         if (cp_len != 1) {
@@ -292,7 +292,7 @@ int json_parse_pos_number(stream* st, char first, double* out, char* last) {
             cp[0] = JSON_NO_LAST_CHAR;
             goto finish;
         }
-        if (err != 0) {
+        if (err) {
             return err;
         }
         if (cp_len != 1) {
@@ -327,7 +327,7 @@ finish:
 int json_skip_whitespace(stream* st, unsigned char* out, size_t* out_len) {
     while (true) {
         int err = stream_next_utf8_cp(st, out, out_len);
-        if (err != 0) {
+        if (err) {
             return err;
         }
         if (*out_len > 1) {
@@ -345,7 +345,7 @@ int json_match_ascii(stream* st, char* expected, size_t len) {
     size_t cp_len;
     for (size_t i = 0; i < len; i++) {
         int err = stream_next_utf8_cp(st, cp, &cp_len);
-        if (err != 0) {
+        if (err) {
             return err;
         }
         if (cp_len > 1) {
@@ -373,7 +373,7 @@ int json_parse_array(stream* st, json_array* arr) {
     arr->cap = 0;
     while (true) {
         err = json_parse_value(st, &val, &last_char);
-        if (err != 0) {
+        if (err) {
             if (err == ERR_JSON_ARRAY_CLOSE) {
                 err = 0;
             }
@@ -398,7 +398,7 @@ int json_parse_array(stream* st, json_array* arr) {
                 continue;
         }
         err = json_skip_whitespace(st, cp, &cp_len);
-        if (err != 0) {
+        if (err) {
             goto cleanup;
         }
         switch (cp[0]) {
@@ -412,7 +412,7 @@ int json_parse_array(stream* st, json_array* arr) {
         }
     }
 cleanup:
-    if (err != 0) {
+    if (err) {
         json_array_free(arr);
     }
     return err;
@@ -428,7 +428,7 @@ int json_parse_object(stream* st, hashmap* obj) {
     hashmap_new(obj, hashmap_strcmp, hashmap_strlen, HASH_FUNC_DJB2);
     while (true) {
         err = json_skip_whitespace(st, cp, &cp_len);
-        if (err != 0) {
+        if (err) {
             goto cleanup;
         }
         if (first && cp[0] == '}') {
@@ -442,11 +442,11 @@ int json_parse_object(stream* st, hashmap* obj) {
         key = NULL;
         size_t key_cap;
         err = json_parse_str(st, &key, &key_cap);
-        if (err != 0) {
+        if (err) {
             goto cleanup;
         }
         err = json_skip_whitespace(st, cp, &cp_len);
-        if (err != 0) {
+        if (err) {
             goto cleanup;
         }
         if (cp[0] != ':') {
@@ -456,7 +456,7 @@ int json_parse_object(stream* st, hashmap* obj) {
         json_value* val = malloc(sizeof(json_value));
         assert(val);
         err = json_parse_value(st, val, &last_char);
-        if (err != 0) {
+        if (err) {
             free(val);
             goto cleanup;
         }
@@ -474,7 +474,7 @@ int json_parse_object(stream* st, hashmap* obj) {
                 continue;
         }
         err = json_skip_whitespace(st, cp, &cp_len);
-        if (err != 0) {
+        if (err) {
             goto cleanup;
         }
         switch (cp[0]) {
@@ -488,7 +488,7 @@ int json_parse_object(stream* st, hashmap* obj) {
         }
     }
 cleanup:
-    if (err != 0) {
+    if (err) {
         free(key);
         json_object_free(obj);
     }
@@ -503,7 +503,7 @@ int json_parse_value(stream* st, json_value* val, char* last_char) {
     char null_str[3] = {'u', 'l', 'l'};
     *last_char = JSON_NO_LAST_CHAR;
     int err = json_skip_whitespace(st, cp, &cp_len);
-    if (err != 0) {
+    if (err) {
         return err;
     }
     switch (cp[0]) {
@@ -534,14 +534,14 @@ int json_parse_value(stream* st, json_value* val, char* last_char) {
         case '-':
             val->ty = JSON_TY_NUMBER;
             err = stream_next_utf8_cp(st, cp, &cp_len);
-            if (err != 0) {
+            if (err) {
                 return err;
             }
             if (cp_len != 1) {
                 return ERR_JSON_INVALID_SYNTAX;
             }
             err = json_parse_pos_number(st, cp[0], &val->inner.num, last_char);
-            if (err != 0) {
+            if (err) {
                 return err;
             }
             val->inner.num *= -1;

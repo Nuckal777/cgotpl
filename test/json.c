@@ -116,7 +116,7 @@ nutest_result json_parse_number_fail(const char* in) {
     stream_open_memory(&st, in, strlen(in));
     json_value val;
     int err = json_parse(&st, &val);
-    NUTEST_ASSERT(err != 0);
+    NUTEST_ASSERT(err);
     return NUTEST_PASS;
 }
 

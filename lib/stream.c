@@ -121,7 +121,7 @@ int stream_read_utf8_continuation(stream* st, unsigned char* out, size_t n) {
     int err;
     for (size_t i = 0; i < n; i++) {
         err = stream_read(st, &current);
-        if (err != 0) {
+        if (err) {
             return err;
         }
         if (0x80 != (0xc0 & current)) {
@@ -139,13 +139,13 @@ int stream_next_utf8_cp(stream* st, unsigned char* out, size_t* len) {
     unsigned char current;
     *len = 0;
     int err = stream_read(st, &current);
-    if (err != 0) {
+    if (err) {
         return err;
     }
     out[0] = current;
     if (0xf0 == (0xf8 & current)) {
         err = stream_read_utf8_continuation(st, out + 1, 3);
-        if (err != 0) {
+        if (err) {
             return err;
         }
         if ((0 == (0x07 & out[0])) && (0 == (0x30 & out[1]))) {
@@ -157,7 +157,7 @@ int stream_next_utf8_cp(stream* st, unsigned char* out, size_t* len) {
     }
     if (0xe0 == (0xf0 & current)) {
         err = stream_read_utf8_continuation(st, out + 1, 2);
-        if (err != 0) {
+        if (err) {
             return err;
         }
         if ((0 == (0x07 & out[0])) && (0 == (0x30 & out[1]))) {
@@ -169,7 +169,7 @@ int stream_next_utf8_cp(stream* st, unsigned char* out, size_t* len) {
     }
     if (0xc0 == (0xe0 & current)) {
         err = stream_read_utf8_continuation(st, out + 1, 1);
-        if (err != 0) {
+        if (err) {
             return err;
         }
         if (0 == (0x1e & out[0])) {

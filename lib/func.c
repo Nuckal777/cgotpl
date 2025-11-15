@@ -142,7 +142,7 @@ int func_not(template_arg_iter* iter, tracked_value* out) {
     }
     tracked_value arg = TRACKED_NULL;
     int err = template_arg_iter_next(iter, &arg);
-    if (err != 0) {
+    if (err) {
         return err;
     }
     out->is_heap = false;
@@ -163,7 +163,7 @@ int func_and(template_arg_iter* iter, tracked_value* out) {
     for (size_t i = 0; i < args_len; i++) {
         tracked_value current = TRACKED_NULL;
         int err = template_arg_iter_next(iter, &current);
-        if (err != 0) {
+        if (err) {
             return err;
         }
         if (i == args_len - 1 || is_empty(&current.val)) {
@@ -183,7 +183,7 @@ int func_or(template_arg_iter* iter, tracked_value* out) {
     for (size_t i = 0; i < args_len; i++) {
         tracked_value current = TRACKED_NULL;
         int err = template_arg_iter_next(iter, &current);
-        if (err != 0) {
+        if (err) {
             return err;
         }
         if (i == args_len - 1 || !is_empty(&current.val)) {
@@ -201,7 +201,7 @@ int func_len(template_arg_iter* iter, tracked_value* out) {
     }
     tracked_value arg = TRACKED_NULL;
     int err = template_arg_iter_next(iter, &arg);
-    if (err != 0) {
+    if (err) {
         return err;
     }
     out->is_heap = false;
@@ -234,7 +234,7 @@ int buf_print(template_arg_iter* iter, buf* b, const char* null_str) {
     for (size_t i = 0; i < args_len; i++) {
         tracked_value arg = TRACKED_NULL;
         int err = template_arg_iter_next(iter, &arg);
-        if (err != 0) {
+        if (err) {
             buf_free(b);
             return err;
         }
@@ -244,7 +244,7 @@ int buf_print(template_arg_iter* iter, buf* b, const char* null_str) {
         prev_str = arg.val.ty == JSON_TY_STRING;
         err = sprintval(b, &arg.val, null_str);
         tracked_value_free(&arg);
-        if (err != 0) {
+        if (err) {
             buf_free(b);
             return err;
         }
@@ -255,7 +255,7 @@ int buf_print(template_arg_iter* iter, buf* b, const char* null_str) {
 int func_print(template_arg_iter* iter, tracked_value* out) {
     buf b;
     int err = buf_print(iter, &b, NULL_STR_NIL);
-    if (err != 0) {
+    if (err) {
         return err;
     }
     buf_append(&b, "", 1);
@@ -268,7 +268,7 @@ int func_print(template_arg_iter* iter, tracked_value* out) {
 int func_println(template_arg_iter* iter, tracked_value* out) {
     buf b;
     int err = buf_print(iter, &b, NULL_STR_NIL);
-    if (err != 0) {
+    if (err) {
         return err;
     }
     buf_append(&b, "\n", 2);
@@ -302,7 +302,7 @@ int func_index(template_arg_iter* iter, tracked_value* out) {
     }
     tracked_value val = TRACKED_NULL;
     int err = template_arg_iter_next(iter, &val);
-    if (err != 0) {
+    if (err) {
         return err;
     }
     if (args_len == 1) {
@@ -315,7 +315,7 @@ int func_index(template_arg_iter* iter, tracked_value* out) {
         switch (sub->ty) {
             case JSON_TY_OBJECT:
                 err = template_arg_iter_next(iter, &arg);
-                if (err != 0) {
+                if (err) {
                     tracked_value_free(&val);
                     return err;
                 }
@@ -334,13 +334,13 @@ int func_index(template_arg_iter* iter, tracked_value* out) {
                 break;
             case JSON_TY_ARRAY:
                 err = template_arg_iter_next(iter, &arg);
-                if (err != 0) {
+                if (err) {
                     tracked_value_free(&val);
                     return err;
                 }
                 size_t idx;
                 err = validate_index(&arg.val, &idx);
-                if (err != 0) {
+                if (err) {
                     tracked_value_free(&arg);
                     tracked_value_free(&val);
                     return err;
@@ -377,7 +377,7 @@ int func_slice(template_arg_iter* iter, tracked_value* out) {
     }
     tracked_value target = TRACKED_NULL;
     err = template_arg_iter_next(iter, &target);
-    if (err != 0) {
+    if (err) {
         return err;
     }
     if (target.val.ty != JSON_TY_ARRAY && target.val.ty != JSON_TY_STRING) {
@@ -386,12 +386,12 @@ int func_slice(template_arg_iter* iter, tracked_value* out) {
     }
     tracked_value start_val = TRACKED_NULL;
     err = template_arg_iter_next(iter, &start_val);
-    if (err != 0) {
+    if (err) {
         goto cleanup_target;
     }
     size_t start_idx;
     err = validate_index(&start_val.val, &start_idx);
-    if (err != 0) {
+    if (err) {
         goto cleanup_start;
     }
     tracked_value end_val = TRACKED_NULL;
@@ -412,12 +412,12 @@ int func_slice(template_arg_iter* iter, tracked_value* out) {
     size_t end_idx = target_len;
     if (args_len > 2) {
         err = template_arg_iter_next(iter, &end_val);
-        if (err != 0) {
+        if (err) {
             goto cleanup_start;
         }
         size_t end;
         err = validate_index(&end_val.val, &end);
-        if (err != 0) {
+        if (err) {
             goto cleanup_end;
         }
         if (end > target_len) {
@@ -434,12 +434,12 @@ int func_slice(template_arg_iter* iter, tracked_value* out) {
     if (args_len == 4) {
         tracked_value cap = TRACKED_NULL;
         err = template_arg_iter_next(iter, &cap);
-        if (err != 0) {
+        if (err) {
             goto cleanup_end;
         }
         size_t cap_idx;
         err = validate_index(&cap.val, &cap_idx);
-        if (err != 0) {
+        if (err) {
             tracked_value_free(&cap);
             goto cleanup_end;
         }
