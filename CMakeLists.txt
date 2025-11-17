@@ -7,6 +7,7 @@ set(C_STANDARD 99)
 add_subdirectory(lib)
 add_subdirectory(cli)
 add_subdirectory(test)
+add_subdirectory(jsontest)
 
 if ("${CMAKE_C_COMPILER_ID}" MATCHES "Clang")
     add_subdirectory(fuzz)

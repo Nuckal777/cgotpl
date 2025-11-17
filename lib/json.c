@@ -1,8 +1,10 @@
 #include "json.h"
 
 #include <assert.h>
+#include <ctype.h>
 #include <errno.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -15,8 +17,10 @@
 #define ERR_JSON_INVALID_ESCAPE -800
 #define ERR_JSON_INVALID_SYNTAX -801
 #define ERR_JSON_BUFFER_OVERFLOW -802
-#define ERR_JSON_ARRAY_CLOSE -803
-#define ERR_JSON_OBJECT_CLOSE -804
+#define ERR_JSON_OBJECT_CLOSE -803
+#define ERR_JSON_DEPTH_EXCEEDED -804
+
+#define JSON_MAX_DEPTH 2048
 
 void json_array_free(json_array* arr) {
     for (size_t i = 0; i < arr->len; i++) {
@@ -358,67 +362,75 @@ int json_match_ascii(stream* st, char* expected, size_t len) {
     return 0;
 }
 
-int json_parse_value(stream* st, json_value* val, char* last_char);
+int json_parse_value(stream* st, json_value* val, char* last_char, size_t* depth);
 
 #define JSON_ARRAY_DEFAULT_CAP 8
 
-int json_parse_array(stream* st, json_array* arr) {
+int json_parse_array(stream* st, json_array* arr, size_t* depth) {
     char last_char;
     unsigned char cp[4];
     size_t cp_len;
     int err = 0;
     json_value val;
-    arr->data = NULL;
-    arr->len = 0;
-    arr->cap = 0;
-    while (true) {
-        err = json_parse_value(st, &val, &last_char);
-        if (err) {
-            if (err == ERR_JSON_ARRAY_CLOSE) {
-                err = 0;
-            }
-            goto cleanup;
+    *arr = (json_array){.data = NULL, .len = 0, .cap = 0};
+    (*depth)++;
+    if (*depth > JSON_MAX_DEPTH) {
+        err = ERR_JSON_DEPTH_EXCEEDED;
+        goto cleanup;
+    }
+    err = json_parse_value(st, &val, &last_char, depth);
+    if (err) {
+        if (err == ERR_JSON_INVALID_SYNTAX && last_char == ']') {
+            err = 0;
         }
-        if (arr->data == NULL) {
-            arr->data = malloc(JSON_ARRAY_DEFAULT_CAP * sizeof(json_value));
-            assert(arr->data);
-            arr->cap = JSON_ARRAY_DEFAULT_CAP;
+        goto cleanup;
+    }
+    arr->data = malloc(JSON_ARRAY_DEFAULT_CAP * sizeof(json_value));
+    assert(arr->data);
+    arr->cap = JSON_ARRAY_DEFAULT_CAP;
+    arr->len = 1;
+    memcpy(arr->data, &val, sizeof(json_value));
+    while (true) {
+        if (last_char == JSON_NO_LAST_CHAR || isspace(last_char)) {
+            err = json_skip_whitespace(st, cp, &cp_len);
+            if (err) {
+                goto cleanup;
+            }
+            if (cp_len != 1) {
+                err = ERR_JSON_INVALID_SYNTAX;
+                goto cleanup;
+            }
+            last_char = cp[0];
+        }
+        switch (last_char) {
+            case ']':
+                goto cleanup;
+            case ',':
+                break;
+            default:
+                err = ERR_JSON_INVALID_SYNTAX;
+                goto cleanup;
         }
         if (arr->len == arr->cap) {
             arr->cap = arr->cap * 3 / 2;
             arr->data = realloc(arr->data, arr->cap * sizeof(json_value));
             assert(arr->data);
         }
-        memcpy(arr->data + arr->len, &val, sizeof(val));
-        arr->len++;
-        switch (last_char) {
-            case ']':
-                goto cleanup;
-            case ',':
-                continue;
-        }
-        err = json_skip_whitespace(st, cp, &cp_len);
+        err = json_parse_value(st, arr->data + arr->len, &last_char, depth);
         if (err) {
             goto cleanup;
         }
-        switch (cp[0]) {
-            case ']':
-                goto cleanup;
-            case ',':
-                continue;
-            default:
-                err = ERR_JSON_INVALID_SYNTAX;
-                goto cleanup;
-        }
+        arr->len++;
     }
 cleanup:
+    (*depth)--;
     if (err) {
         json_array_free(arr);
     }
     return err;
 }
 
-int json_parse_object(stream* st, hashmap* obj) {
+int json_parse_object(stream* st, hashmap* obj, size_t* depth) {
     bool first = true;
     int err = 0;
     unsigned char cp[4];
@@ -426,6 +438,11 @@ int json_parse_object(stream* st, hashmap* obj) {
     char* key = NULL;
     char last_char;
     hashmap_new(obj, hashmap_strcmp, hashmap_strlen, HASH_FUNC_DJB2);
+    (*depth)++;
+    if (*depth > JSON_MAX_DEPTH) {
+        err = ERR_JSON_DEPTH_EXCEEDED;
+        goto cleanup;
+    }
     while (true) {
         err = json_skip_whitespace(st, cp, &cp_len);
         if (err) {
@@ -455,7 +472,7 @@ int json_parse_object(stream* st, hashmap* obj) {
         }
         json_value* val = malloc(sizeof(json_value));
         assert(val);
-        err = json_parse_value(st, val, &last_char);
+        err = json_parse_value(st, val, &last_char, depth);
         if (err) {
             free(val);
             goto cleanup;
@@ -488,6 +505,7 @@ int json_parse_object(stream* st, hashmap* obj) {
         }
     }
 cleanup:
+    (*depth)--;
     if (err) {
         free(key);
         json_object_free(obj);
@@ -495,7 +513,7 @@ cleanup:
     return err;
 }
 
-int json_parse_value(stream* st, json_value* val, char* last_char) {
+int json_parse_value(stream* st, json_value* val, char* last_char, size_t* depth) {
     unsigned char cp[4];
     size_t cp_len, out_cap;
     char true_str[3] = {'r', 'u', 'e'};
@@ -548,12 +566,10 @@ int json_parse_value(stream* st, json_value* val, char* last_char) {
             return 0;
         case '[':
             val->ty = JSON_TY_ARRAY;
-            return json_parse_array(st, &val->inner.arr);
-        case ']':
-            return ERR_JSON_ARRAY_CLOSE;
+            return json_parse_array(st, &val->inner.arr, depth);
         case '{':
             val->ty = JSON_TY_OBJECT;
-            return json_parse_object(st, &val->inner.obj);
+            return json_parse_object(st, &val->inner.obj, depth);
         default:
             *last_char = cp[0];
             return ERR_JSON_INVALID_SYNTAX;
@@ -563,5 +579,6 @@ int json_parse_value(stream* st, json_value* val, char* last_char) {
 
 int json_parse(stream* st, json_value* val) {
     char last_char;
-    return json_parse_value(st, val, &last_char);
+    size_t depth = 0;
+    return json_parse_value(st, val, &last_char, &depth);
 }
