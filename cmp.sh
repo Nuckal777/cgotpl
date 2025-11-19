@@ -344,6 +344,10 @@ testcase '{{ printf "%q" . }}' '"abcde"'
 testcase '{{ printf "%q" . }}' '"abc\"de"'
 testcase '{{ printf "%q" . }}' '22.5'
 testcase '{{ printf "%q" . }}' '80'
+testcase '{{ and or 1 2 }}' 'null'
+testcase '{{ (and (1) (2)) }}' 'null'
+testcase '{{ ((1) | and (2)) }}' 'null'
+testcase '{{ (and (or 1) (or 2)) }}' 'null'
 
 if [ $FAILS -ne 0 ]; then
     printf "\nencountered %d failures\n" $FAILS

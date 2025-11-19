@@ -142,6 +142,7 @@ typedef struct {
     int return_reason;
     char ident[STATE_IDENT_CAP];
     bool eval_block;
+    bool eval_arg;
 } state;
 
 int template_skip_whitespace(stream* in) {
@@ -698,7 +699,10 @@ int template_parse_parenthesis(stream* in, state* state, tracked_value* result) 
     if (err) {
         return err;
     }
+    bool old_eval_arg = state->eval_arg;
+    state->eval_arg = false;
     err = template_parse_expr(in, state, result, 0);
+    state->eval_arg = old_eval_arg;
     if (err) {
         return err;
     }
@@ -2041,7 +2045,9 @@ int template_eval_arg(stream* in, state* state, long where, tracked_value* resul
     if (err) {
         return err;
     }
+    state->eval_arg = true;
     err = template_parse_expr(in, state, result, TEMPLATE_PARSE_EXPR_NO_PIPE | TEMPLATE_PARSE_EXPR_NO_VAR_MUT);
+    state->eval_arg = false;
     if (err) {
         return err;
     }
@@ -2106,38 +2112,46 @@ int template_dispatch_func(stream* in, state* state, tracked_value* piped, track
     char func_name[STATE_IDENT_CAP];
     strcpy(func_name, state->ident);
     long pre_end;
+    err = stream_pos(in, &pre_end);
+    if (err) {
+        goto cleanup;
+    }
     unsigned char cp[4];
     size_t cp_len;
-    while (true) {
-        err = stream_next_utf8_cp(in, cp, &cp_len);
-        if (err) {
-            goto cleanup;
+    // when evaluating a function directly passed as an argument
+    // to another function it is always evaluated with zero args
+    if (!state->eval_arg) {
+        while (true) {
+            err = stream_next_utf8_cp(in, cp, &cp_len);
+            if (err) {
+                goto cleanup;
+            }
+            if (cp_len != 1) {
+                err = ERR_TEMPLATE_INVALID_SYNTAX;
+                goto cleanup;
+            }
+            if (!(isspace(cp[0]) || cp[0] == ')' || cp[0] == '}' || cp[0] == '|')) {
+                err = ERR_TEMPLATE_INVALID_SYNTAX;
+                goto cleanup;
+            }
+            err = stream_seek(in, -cp_len);
+            if (err) {
+                goto cleanup;
+            }
+            if (iter.args_len == TEMPLATE_FUNC_ARGS_MAX) {
+                err = ERR_BUF_OVERFLOW;
+                goto cleanup;
+            }
+            err = template_skip_expr(in, args + iter.args_len);
+            if (err == ERR_TEMPLATE_NO_VALUE) {
+                pre_end = args[iter.args_len];
+                break;
+            }
+            if (err) {
+                goto cleanup;
+            }
+            iter.args_len++;
         }
-        if (cp_len != 1) {
-            err = ERR_TEMPLATE_INVALID_SYNTAX;
-            goto cleanup;
-        }
-        if (!(isspace(cp[0]) || cp[0] == ')' || cp[0] == '}' || cp[0] == '|')) {
-            err = ERR_TEMPLATE_INVALID_SYNTAX;
-            goto cleanup;
-        }
-        err = stream_seek(in, -cp_len);
-        if (err) {
-            goto cleanup;
-        }
-        if (iter.args_len == TEMPLATE_FUNC_ARGS_MAX) {
-            err = ERR_BUF_OVERFLOW;
-            goto cleanup;
-        }
-        err = template_skip_expr(in, args + iter.args_len);
-        if (err == ERR_TEMPLATE_NO_VALUE) {
-            pre_end = args[iter.args_len];
-            break;
-        }
-        if (err) {
-            goto cleanup;
-        }
-        iter.args_len++;
     }
 
     funcptr f;
@@ -2399,6 +2413,7 @@ int template_eval_stream(stream* in, json_value* dot, char** out) {
     state.range_depth = 0;
     state.return_reason = RETURN_REASON_REGULAR;
     state.eval_block = false;
+    state.eval_arg = false;
     hashmap_new(&state.define_locs, hashmap_strcmp, hashmap_strlen, HASH_FUNC_DJB2);
     funcmap_new(&state.funcmap);
     stack_new(&state.stack);
