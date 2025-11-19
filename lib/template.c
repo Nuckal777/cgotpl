@@ -2451,3 +2451,49 @@ int template_eval_mem(const char* tpl, size_t n, json_value* dot, char** out) {
     }
     return err;
 }
+
+char* template_describe_err(int err) {
+    switch (err) {
+        case ERR_TEMPLATE_INVALID_ESCAPE:
+            return "invalid escape sequence";
+        case ERR_TEMPLATE_INVALID_SYNTAX:
+            return "invalid syntax";
+        case ERR_TEMPLATE_KEYWORD_UNKNOWN:
+            return "unknown keyword";
+        case ERR_TEMPLATE_FUNC_UNKNOWN:
+            return "unknown function";
+        case ERR_TEMPLATE_NO_VALUE:
+            return "not a value";
+        case ERR_TEMPLATE_KEYWORD_UNEXPECTED:
+            return "keyword unexpected";
+        case ERR_TEMPLATE_NO_OBJECT:
+            return "not an object";
+        case ERR_TEMPLATE_NO_ITERABLE:
+            return "not an iterable";
+        case ERR_TEMPLATE_KEY_UNKNOWN:
+            return "unknown key";
+        case ERR_TEMPLATE_VAR_UNKNOWN:
+            return "unknown variable";
+        case ERR_TEMPLATE_NO_MUTATION:
+            return "not a mutation";
+        case ERR_TEMPLATE_UNEXPECTED_EOF:
+            return "unexpected end of file";
+        case ERR_TEMPLATE_DEFINE_UNKNOWN:
+            return "unknown template definition";
+        case ERR_TEMPLATE_DEFINE_NESTED:
+            return "nested define statement";
+        case ERR_FUNC_INVALID_ARG_LEN:
+            return "invalid argument count";
+        case ERR_FUNC_INVALID_ARG_TYPE:
+            return "invalid argument type";
+        case ERR_FUNC_INVALID_ARG_VAL:
+            return "invalid argument value";
+        case ERR_FUNC_INDEX_NOT_FOUND:
+            return "out of range";
+        case ERR_BUF_OVERFLOW:
+            return "overflowed buffer";
+        case ERR_INVALID_UTF8:
+            return "invalid utf8 sequence";
+    }
+    return NULL;
+}

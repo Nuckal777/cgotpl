@@ -14,12 +14,6 @@
 #include "map.h"
 #include "stream.h"
 
-#define ERR_JSON_INVALID_ESCAPE -800
-#define ERR_JSON_INVALID_SYNTAX -801
-#define ERR_JSON_BUFFER_OVERFLOW -802
-#define ERR_JSON_OBJECT_CLOSE -803
-#define ERR_JSON_DEPTH_EXCEEDED -804
-
 #define JSON_MAX_DEPTH 2048
 
 void json_array_free(json_array* arr) {
@@ -615,4 +609,22 @@ int json_parse(stream* st, json_value* val) {
         return err;
     }
     return 0;
+}
+
+char* json_describe_err(int err) {
+    switch (err) {
+        case ERR_JSON_INVALID_SYNTAX:
+            return "invalid syntax";
+        case ERR_JSON_INVALID_ESCAPE:
+            return "invalid escape sequence";
+        case ERR_JSON_DEPTH_EXCEEDED:
+            return "exceeded maximum nesting depth";
+        case ERR_JSON_BUFFER_OVERFLOW:
+            return "overflowed buffer";
+        case ERR_INVALID_UTF8:
+            return "invalid utf8 sequence";
+        case EOF:
+            return "unexpected end of file";
+    }
+    return NULL;
 }

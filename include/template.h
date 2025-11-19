@@ -31,4 +31,6 @@ int template_eval_stream(stream* in, json_value* dot, char** out);
 // templating and needs to be freed by the caller. Returns 0 on success.
 int template_eval_mem(const char* tpl, size_t n, json_value* dot, char** out);
 
+char* template_describe_err(int err);
+
 #endif

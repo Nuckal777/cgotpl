@@ -85,7 +85,11 @@ int main(int argc, char* argv[]) {
     stream_open_memory(&data, args.data, strlen(args.data));
     err = json_parse(&data, &dot);
     if (err) {
-        fprintf(stderr, "failed to parse data: %d\n", err);
+        char* desc = json_describe_err(err);
+        if (desc == NULL) {
+            desc = "unknown error";
+        }
+        fprintf(stderr, "failed to parse data: %d (%s)\n", err, desc);
         result = EXIT_FAILURE;
         goto cleanup;
     }
@@ -104,7 +108,11 @@ int main(int argc, char* argv[]) {
 
     err = template_eval_stream(&tpl, &dot, &out);
     if (err) {
-        fprintf(stderr, "failed to evaluate template: %d\n", err);
+        char* desc = template_describe_err(err);
+        if (desc == NULL) {
+            desc = "unknown error";
+        }
+        fprintf(stderr, "failed to evaluate template: %d (%s)\n", err, desc);
         result = EXIT_FAILURE;
         goto cleanup_tpl;
     }
