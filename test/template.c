@@ -70,6 +70,10 @@ nutest_result template_incomplete_pipeline(void) {
     return assert_eval_err("{{ 53 }}{{ ", ERR_TEMPLATE_UNEXPECTED_EOF);
 }
 
+nutest_result template_incomplete_str(void) {
+    return assert_eval_err("{{ `cba ", ERR_TEMPLATE_UNEXPECTED_EOF);
+}
+
 nutest_result template_strip_whitespace_pre(void) {
     return assert_eval_null(" r      {{- ``}}s", " rs");
 }
@@ -841,6 +845,7 @@ int main() {
     nutest_register(template_identity);
     nutest_register(template_empty_pipeline);
     nutest_register(template_incomplete_pipeline);
+    nutest_register(template_incomplete_str);
     nutest_register(template_strip_whitespace_pre);
     nutest_register(template_strip_whitespace_post);
     nutest_register(template_strip_whitespace_multi);

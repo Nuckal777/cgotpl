@@ -2272,7 +2272,6 @@ int template_dispatch_pipeline(stream* in, state* state, tracked_value* result) 
         return template_parse_pipe(in, state, result);
     }
     err = template_parse_value(in, state, result, cp[0]);
-    const char no_value[] = "<no value>";
     switch (err) {
         case 0:
             // for some reason top-level nil is invalid in go templates
@@ -2281,7 +2280,7 @@ int template_dispatch_pipeline(stream* in, state* state, tracked_value* result) 
             }
             return template_parse_pipe(in, state, result);
         case ERR_TEMPLATE_KEY_UNKNOWN:
-            buf_append(&state->out, no_value, sizeof(no_value) - 1);
+            buf_append(&state->out, NULL_STR_NO_VALUE, sizeof(NULL_STR_NO_VALUE) - 1);
             return 0;
         case ERR_TEMPLATE_NO_VALUE:
             break;
@@ -2310,6 +2309,9 @@ int template_invoke_pipeline(stream* in, state* state) {
     tracked_value result = TRACKED_NULL;
     int err = template_dispatch_pipeline(in, state, &result);
     if (err) {
+        if (err == EOF) {
+            return ERR_TEMPLATE_UNEXPECTED_EOF;
+        }
         tracked_value_free(&result);
         return err;
     }
