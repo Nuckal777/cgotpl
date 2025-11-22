@@ -4,19 +4,21 @@
 #include <string.h>
 
 #include "template.h"
+#include "version.h"
 
 typedef struct {
     char* filename;
     char* tpl;
     char* data;
     char is_help;
+    char is_version;
 } args;
 
 #define ERR_PARSE_EXPECT_ARG -700
 #define ERR_PARSE_UNEXPECTED_COUNT -701
 
 int parse_args(int argc, char* argv[], args* out) {
-    *out = (args){.filename = NULL, .data = NULL, .tpl = NULL, .is_help = 0};
+    *out = (args){.filename = NULL, .data = NULL, .tpl = NULL, .is_help = 0, .is_version = 0};
     int err = 0;
     size_t freestanding_len = 0;
     char** freestanding = malloc(argc * sizeof(char*));
@@ -36,12 +38,22 @@ int parse_args(int argc, char* argv[], args* out) {
             out->is_help = 1;
             continue;
         }
+        if (strcmp(argv[i], "--version") == 0) {
+            out->is_version = 1;
+            continue;
+        }
         freestanding[freestanding_len] = argv[i];
         freestanding_len++;
     }
 
     if (out->is_help) {
-        if (freestanding_len != 0) {
+        if (freestanding_len != 0 || out->is_version) {
+            err = ERR_PARSE_UNEXPECTED_COUNT;
+        }
+        goto cleanup;
+    }
+    if (out->is_version) {
+        if (freestanding_len != 0 || out->is_help) {
             err = ERR_PARSE_UNEXPECTED_COUNT;
         }
         goto cleanup;
@@ -74,6 +86,10 @@ int main(int argc, char* argv[]) {
     }
     if (args.is_help) {
         printf("usage: cgotpl ([TEMPLATE] | -f [FILENAME]) [DATA]\n");
+        return EXIT_SUCCESS;
+    }
+    if (args.is_version) {
+        printf("%s\n", CGOTPL_VERSION);
         return EXIT_SUCCESS;
     }
 

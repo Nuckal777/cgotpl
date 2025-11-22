@@ -46,3 +46,4 @@ build/
 .cache/
 compile_commands.json
 *.corpus
+include/version.h

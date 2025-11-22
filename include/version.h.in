@@ -1,0 +1,5 @@
+#ifndef CGOTPL_VERSION
+
+#define CGOTPL_VERSION "@CGOTPL_VERSION@"
+
+#endif
