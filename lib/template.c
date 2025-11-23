@@ -226,7 +226,7 @@ int template_parse_backtick_str(stream* in, char** out) {
         if (err) {
             goto cleanup;
         }
-        if (cp_len > 1 || cp[0] != '`') {
+        if (cp_len != 1 || cp[0] != '`') {
             buf_append(&b, (const char*)cp, cp_len);
             continue;
         }
@@ -253,7 +253,7 @@ int template_parse_regular_str(stream* in, char** out) {
         if (err) {
             goto cleanup;
         }
-        if (cp_len > 1) {
+        if (cp_len != 1) {
             buf_append(&b, (const char*)cp, cp_len);
             continue;
         }
@@ -339,7 +339,7 @@ int template_parse_ident(stream* in, state* state) {
         if (err) {
             return err;
         }
-        if (cp_len > 1) {
+        if (cp_len != 1) {
             return ERR_TEMPLATE_INVALID_SYNTAX;
         }
         if (!isalnum(cp[0])) {
@@ -445,7 +445,7 @@ int template_parse_var_value(stream* in, state* state, json_value* result) {
     if (err) {
         return err;
     }
-    if (cp_len > 1 || !isspace(cp[0])) {  // '$' is already consumed => named '$ABC' var
+    if (cp_len != 1 || !isspace(cp[0])) {  // '$' is already consumed => named '$ABC' var
         err = stream_seek(in, -cp_len);
         if (err) {
             return err;
@@ -604,7 +604,7 @@ int template_parse_var_mutation(stream* in, state* state, tracked_value* result)
     if (err) {
         return err;
     }
-    if (cp_len > 1 || !isspace(cp[0])) {  // '$' is already consumed => named '$ABC' var
+    if (cp_len != 1 || !isspace(cp[0])) {  // '$' is already consumed => named '$ABC' var
         err = stream_seek(in, -cp_len);
         if (err) {
             return err;
@@ -613,15 +613,24 @@ int template_parse_var_mutation(stream* in, state* state, tracked_value* result)
         if (err) {
             return err;
         }
+        int err = stream_next_utf8_cp(in, cp, &cp_len);
+        if (err) {
+            return err;
+        }
     } else {  // '$' var
         state->ident[0] = 0;
     }
-    err = template_next_nonspace(in, cp, &cp_len);
-    if (err) {
-        return err;
+    if (cp[0] == '=') { // enforce space for assignments
+        return ERR_TEMPLATE_INVALID_SYNTAX;
     }
-    if (cp_len > 1) {
-        return ERR_TEMPLATE_NO_MUTATION;
+    if (cp[0] != ':') {
+        err = template_next_nonspace(in, cp, &cp_len);
+        if (err) {
+            return err;
+        }
+        if (cp_len != 1) {
+            return ERR_TEMPLATE_NO_MUTATION;
+        }
     }
     bool is_assignment = true;
     switch (cp[0]) {
@@ -632,7 +641,7 @@ int template_parse_var_mutation(stream* in, state* state, tracked_value* result)
             if (err) {
                 return err;
             }
-            if (cp_len > 1 || cp[0] != '=') {
+            if (cp_len != 1 || cp[0] != '=') {
                 return ERR_TEMPLATE_NO_MUTATION;
             }
             is_assignment = false;
@@ -898,7 +907,7 @@ int template_parse_noop_ident(stream* in, state* state, char leading) {
         if (err) {
             return err;
         }
-        if (cp_len > 1) {
+        if (cp_len != 1) {
             return ERR_TEMPLATE_INVALID_SYNTAX;
         }
         bool keep = isalnum(cp[0]) || cp[0] == '.' || cp[0] == '$' || cp[0] == '|' || cp[0] == '(' || cp[0] == ')';

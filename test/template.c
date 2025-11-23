@@ -385,7 +385,7 @@ nutest_result template_var_define_within_with(void) {
 }
 
 nutest_result template_var_assign_undefined(void) {
-    return assert_eval_err("{{$undefined=`pppp`}}", ERR_TEMPLATE_VAR_UNKNOWN);
+    return assert_eval_err("{{$undefined =`pppp`}}", ERR_TEMPLATE_VAR_UNKNOWN);
 }
 
 nutest_result template_var_redefine(void) {
