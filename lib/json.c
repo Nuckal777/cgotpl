@@ -123,8 +123,10 @@ int json_value_equal(const json_value* a, const json_value* b) {
             for (size_t i = 0; i < a->inner.obj.count; i++) {
                 json_value* aval;
                 json_value* bval;
-                assert(hashmap_get(&a->inner.obj, keys[i], (const void**)&aval));
-                assert(hashmap_get(&b->inner.obj, keys[i], (const void**)&bval));
+                int found = hashmap_get(&a->inner.obj, keys[i], (const void**)&aval);
+                assert(found);
+                found = hashmap_get(&b->inner.obj, keys[i], (const void**)&bval);
+                assert(found);
                 if (!json_value_equal(aval, bval)) {
                     free(keys);
                     return 0;
@@ -133,9 +135,9 @@ int json_value_equal(const json_value* a, const json_value* b) {
             free(keys);
             return 1;
         }
-        default:
-            assert(0);
     }
+    assert(0);
+    return 0;
 }
 
 void json_str_append(char val, char** buf, size_t* len, size_t* cap) {

@@ -103,6 +103,7 @@ int sprintval(buf* b, json_value* val, const char* null_str) {
             return 0;
     }
     assert(0);
+    return 0;
 }
 
 void sprintentry(entry* e, void* userdata) {
@@ -134,6 +135,7 @@ bool is_empty(json_value* val) {
             return val->inner.obj.count == 0;
     }
     assert(0);
+    return false;
 }
 
 int func_not(template_arg_iter* iter, tracked_value* out) {

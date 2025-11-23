@@ -41,4 +41,5 @@ int32_t utf8_decode(const unsigned char* in, size_t in_len) {
             return ((in[0] & 0x07) << 18) | ((in[1] & 0x3f) << 12) | ((in[2] & 0x3f) << 6) | (in[3] & 0x3f);
     }
     assert(0);
+    return 0;
 }

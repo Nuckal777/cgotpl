@@ -41,6 +41,7 @@ size_t hashmap_hash(const hashmap* map, const void* key) {
             return djb2(key, map->key_len(key));
     }
     assert(0);
+    return 0;
 }
 
 entry hashmap_insert(hashmap* map, void* key, void* value) {
@@ -79,6 +80,7 @@ entry hashmap_insert(hashmap* map, void* key, void* value) {
         }
     }
     assert(0);
+    return (entry){};
 }
 
 int hashmap_get(const hashmap* map, const void* key, const void** out) {

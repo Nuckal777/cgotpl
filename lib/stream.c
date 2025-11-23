@@ -29,6 +29,7 @@ int stream_close(stream* stream) {
         return fclose(stream->inner.file);
     }
     assert(0);
+    return 0;
 }
 
 int stream_pos(stream* stream, long* pos) {
@@ -46,6 +47,7 @@ int stream_pos(stream* stream, long* pos) {
             return 0;
     }
     assert(0);
+    return 0;
 }
 
 int stream_set_pos(stream* stream, long pos) {
@@ -67,6 +69,7 @@ int stream_set_pos(stream* stream, long pos) {
             return 0;
     }
     assert(0);
+    return 0;
 }
 
 int stream_read(stream* stream, unsigned char* out) {
@@ -90,6 +93,7 @@ int stream_read(stream* stream, unsigned char* out) {
             return 0;
     }
     assert(0);
+    return 0;
 }
 
 int stream_seek(stream* stream, size_t relative) {
@@ -114,6 +118,7 @@ int stream_seek(stream* stream, size_t relative) {
             return 0;
     }
     assert(0);
+    return 0;
 }
 
 int stream_read_utf8_continuation(stream* st, unsigned char* out, size_t n) {
