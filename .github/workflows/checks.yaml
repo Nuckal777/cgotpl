@@ -1,23 +1,31 @@
 name: Checks
 on: [push]
-env:
-  CC: clang
 jobs:
   check:
+    strategy:
+      matrix:
+        compiler: [gcc, clang]
+        buildtype: [Debug, RelWithDebugInfo]
     runs-on: ubuntu-latest
+    env:
+      CC: ${{ matrix.compiler }}
     steps:
     - uses: actions/checkout@v5
       with:
         submodules: true
     - uses: actions/setup-go@v6
       with:
-        go-version: "1.24"
+        go-version: "1.25"
     - name: Init cmake
-      run: cmake -S . -B build
+      env:
+        BUILDTYPE: ${{ matrix.buildtype }}
+      run: echo $BUILDTYPE; cmake -S . -B build -DCMAKE_BUILD_TYPE=${BUILDTYPE}
     - name: Check
       run: cmake --build build --target check
   fuzz:
     runs-on: ubuntu-latest
+    env:
+      CC: clang
     steps:
     - uses: actions/checkout@v5
     - name: Create corpus directories
