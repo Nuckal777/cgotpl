@@ -552,6 +552,10 @@ nutest_result template_pipe_piped_var(void) {
     return assert_eval_null("{{ ($a := true) | not }}{{ $a }}", "falsetrue");
 }
 
+nutest_result template_pipe_var_reassign(void) {
+    return assert_eval_null("{{ $ = ($ = `a`) | print ($ = 3) }}", "");
+}
+
 nutest_result template_loop_null_name(void) {
     json_value val;
     int err = make_json_val(&val, "[3, 2, 1]");
@@ -838,7 +842,8 @@ nutest_result template_printf_missing(void) {
 }
 
 nutest_result template_printf_complex(void) {
-    return assert_eval_data("{{ printf `%s` . }}", "[{\"a\":3.5}, {\"b\":true}, [false, null]]", "[map[a:%!s(float64=3.5)] map[b:%!s(bool=true)] [%!s(bool=false) <nil>]]");
+    return assert_eval_data("{{ printf `%s` . }}", "[{\"a\":3.5}, {\"b\":true}, [false, null]]",
+                            "[map[a:%!s(float64=3.5)] map[b:%!s(bool=true)] [%!s(bool=false) <nil>]]");
 }
 
 int main() {
@@ -966,6 +971,7 @@ int main() {
     nutest_register(template_pipe_invalid_args);
     nutest_register(template_pipe_var_def);
     nutest_register(template_pipe_piped_var);
+    nutest_register(template_pipe_var_reassign);
     nutest_register(template_define_invoke);
     nutest_register(template_define_change_dot);
     nutest_register(template_define_no_name);

@@ -663,7 +663,6 @@ int template_parse_var_mutation(stream* in, state* state, tracked_value* result)
     assert(value_copy);
     if (result->is_heap) {
         *value_copy = result->val;
-        result->is_heap = false;
     } else {
         // in case of $var=$var the second $var would be returned as result, although
         // it is freed in stack_set_var
@@ -738,6 +737,15 @@ int template_parse_pipe(stream* in, state* state, tracked_value* result) {
         return err;
     }
     tracked_value last = *result;
+    if (!result->is_heap) {
+        // a non-help allocated value may originate from the stack
+        // whose pointer would be invalidated if a function argument
+        // does assign another value to the same variable, as in e.g.
+        // {{ $=($="a") | print ($=3) }}.
+        json_value_copy(&last.val, &result->val);
+        tracked_value_free(result);
+        last.is_heap = true;
+    }
     *result = TRACKED_NULL;
     err = template_dispatch_func(in, state, &last, result);
     if (err) {
