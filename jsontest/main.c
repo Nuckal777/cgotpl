@@ -7,7 +7,7 @@
 #include "stream.h"
 
 #if defined(_WIN32) || defined(_WIN64)
-#define DIR_SEP '\'
+#define DIR_SEP '\\'
 #else
 #define DIR_SEP '/'
 #endif

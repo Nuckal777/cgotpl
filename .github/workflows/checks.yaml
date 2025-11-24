@@ -34,3 +34,41 @@ jobs:
       run: cmake -S . -B build
     - name: Fuzz
       run: cmake --build build --target fuzz
+  cosmocc:
+    runs-on: ubuntu-latest
+    env:
+      CC: "cosmocc -I/opt/cosmos/include -L/opt/cosmos/lib"
+      CXX: "cosmoc++ -I/opt/cosmos/include -L/opt/cosmos/lib"
+      PKG_CONFIG: "pkg-config --with-path=/opt/cosmos/lib/pkgconfig"
+      INSTALL: cosmoinstall
+      AR: cosmoar
+    steps:
+    - uses: actions/checkout@v5
+      with:
+        submodules: true
+    - name: Fetch cosmocc
+      run: |
+        VERSION="4.0.2"
+        INSTALL_DIR="/opt/cosmos"
+        INSTALL_DIR_FORMATTED=${INSTALL_DIR}
+        echo "Using install dir ${INSTALL_DIR}"
+
+        rm -rf ${INSTALL_DIR}
+        mkdir -p ${INSTALL_DIR}
+        cd ${INSTALL_DIR}
+
+        echo "Downloading cosmocc ${VERSION}"
+        curl -s -S -f -L -o cosmocc.zip https://github.com/jart/cosmopolitan/releases/download/${VERSION}/cosmocc-${VERSION}.zip
+
+        unzip -qq cosmocc.zip
+        echo ${INSTALL_DIR_FORMATTED}/bin >> $GITHUB_PATH
+        chmod +x ${INSTALL_DIR_FORMATTED}/bin/cosmoranlib
+
+        echo "Fixing binfmt_misc"
+        APE_PATH=$(realpath ${INSTALL_DIR_FORMATTED}/bin/ape-$(uname -m).elf)
+        sudo sh -c "echo ':APE:M::MZqFpD::${APE_PATH}:' >/proc/sys/fs/binfmt_misc/register"
+        sudo sh -c "echo ':APE-jart:M::jartsr::${APE_PATH}:' >/proc/sys/fs/binfmt_misc/register"
+    - name: Init cmake
+      run: cmake -S . -B build -DCMAKE_SYSTEM_NAME="Generic" -UCMAKE_SYSTEM_PROCESSOR -DCMAKE_USER_MAKE_RULES_OVERRIDE="$PWD/cosmocc-override.cmake" -DCMAKE_AR="$(command -v cosmoar)" -DCMAKE_RANLIB="$(command -v cosmoranlib)"
+    - name: Check
+      run: cmake --build build --target check
