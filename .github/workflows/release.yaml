@@ -45,7 +45,6 @@ jobs:
       with:
         artifacts: "cgotpl-${{ github.ref_name }}.zip"
         artifactErrorsFailBuild: true
-        commit: ${{ github.sha }}
         bodyFile: release-notes/${{ github.ref_name }}.md
         tag: ${{ github.ref_name }}
         token: ${{ secrets.GITHUB_TOKEN }}
