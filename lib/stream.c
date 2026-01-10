@@ -153,8 +153,10 @@ int stream_next_utf8_cp(stream* st, unsigned char* out, size_t* len) {
         if (err) {
             return err;
         }
-        if ((0 == (0x07 & out[0])) && (0 == (0x30 & out[1]))) {
-            // overlong encoding
+        if ((0 == (0x07 & out[0])) && (0 == (0x30 & out[1]))) {  // overlong encoding
+            return ERR_INVALID_UTF8;
+        }
+        if (out[0] == 0xf4 && out[1] > 0x8f) {  // U+10FFFF exceeded
             return ERR_INVALID_UTF8;
         }
         *len = 4;
@@ -165,8 +167,10 @@ int stream_next_utf8_cp(stream* st, unsigned char* out, size_t* len) {
         if (err) {
             return err;
         }
-        if ((0 == (0x07 & out[0])) && (0 == (0x30 & out[1]))) {
-            // overlong encoding
+        if ((0 == (0x0f & out[0])) && (0 == (0x20 & out[1]))) {  // overlong encoding
+            return ERR_INVALID_UTF8;
+        }
+        if (out[0] == 0xed && out[1] >= 0xa0) {  // surrogate pair
             return ERR_INVALID_UTF8;
         }
         *len = 3;
@@ -177,8 +181,7 @@ int stream_next_utf8_cp(stream* st, unsigned char* out, size_t* len) {
         if (err) {
             return err;
         }
-        if (0 == (0x1e & out[0])) {
-            // overlong encoding
+        if (0 == (0x1e & out[0])) {  // overlong encoding
             return ERR_INVALID_UTF8;
         }
         *len = 2;

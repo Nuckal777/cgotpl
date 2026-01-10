@@ -1,5 +1,6 @@
 #include "stream.h"
 
+#include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -150,7 +151,7 @@ nutest_result stream_utf8_multi(void) {
     return NUTEST_PASS;
 }
 
-nutest_result stream_utf8_invalid(void) {
+nutest_result stream_utf8_invalid_continuation(void) {
     const unsigned char data[3] = {0xc2, 0xa3, 0xa3};
     stream st;
     stream_open_memory(&st, data, sizeof(data));
@@ -178,8 +179,34 @@ nutest_result stream_utf8_overlong_4(void) {
     return NUTEST_PASS;
 }
 
+nutest_result stream_utf8_overlong_3(void) {
+    const unsigned char data[3] = {0xe0, 0x80, 0xaf};
+    stream st;
+    stream_open_memory(&st, data, sizeof(data));
+    unsigned char out[4];
+    size_t len;
+    int err;
+    err = stream_next_utf8_cp(&st, out, &len);
+    NUTEST_ASSERT(err == ERR_INVALID_UTF8);
+    NUTEST_ASSERT(stream_close(&st) == 0);
+    return NUTEST_PASS;
+}
+
 nutest_result stream_utf8_overlong_2(void) {
     const unsigned char data[2] = {0xc0, 0xa3};
+    stream st;
+    stream_open_memory(&st, data, sizeof(data));
+    unsigned char out[4];
+    size_t len;
+    int err;
+    err = stream_next_utf8_cp(&st, out, &len);
+    NUTEST_ASSERT(err == ERR_INVALID_UTF8);
+    NUTEST_ASSERT(stream_close(&st) == 0);
+    return NUTEST_PASS;
+}
+
+nutest_result stream_utf8_surrogate(void) {
+    const unsigned char data[3] = {0xed, 0xa0, 0xbd};
     stream st;
     stream_open_memory(&st, data, sizeof(data));
     unsigned char out[4];
@@ -198,8 +225,10 @@ int main() {
     nutest_register(stream_file_pos);
     nutest_register(stream_utf8_single);
     nutest_register(stream_utf8_multi);
-    nutest_register(stream_utf8_invalid);
+    nutest_register(stream_utf8_invalid_continuation);
     nutest_register(stream_utf8_overlong_4);
+    nutest_register(stream_utf8_overlong_3);
     nutest_register(stream_utf8_overlong_2);
+    nutest_register(stream_utf8_surrogate);
     return nutest_run();
 }
