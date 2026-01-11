@@ -34,6 +34,16 @@ jobs:
       run: cmake -S . -B build
     - name: Fuzz
       run: cmake --build build --target fuzz
+  jsontest:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v5
+      with:
+        submodules: true
+    - name: Init cmake
+      run: cmake -S . -B build
+    - name: Run jsontest
+      run: cmake --build build --target jsontest_all
   cosmocc:
     runs-on: ubuntu-latest
     env:
