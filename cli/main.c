@@ -77,6 +77,14 @@ cleanup:
     return err;
 }
 
+// The encoding of argv is operating system dependent.
+// On modern POSIX systems interactive shell input can
+// be reasonably assumed as utf-8. Neverthess, arbitrary
+// bytes can be passed, e.g. via execve(). So, the input
+// is always validated. On Windows argv is encoded with
+// the current codepage, which means that any non-ASCII
+// character likely misbehaves. cosmocc converts the
+// commandline before passing it to main() into utf-8.
 int main(int argc, char* argv[]) {
     args args;
     int err = parse_args(argc, argv, &args);

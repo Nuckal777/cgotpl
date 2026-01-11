@@ -56,6 +56,7 @@ A `stream` needs be closed with:
 int stream_close(stream* stream);
 ```
 See [`cli/main.c`](cli/main.c) for a complete example.
+The template and JSON passed to cgotpl need to be utf-8 encoded, which is validated during consumption.
 
 ## Building
 
@@ -73,6 +74,14 @@ The library can be build with:
 cmake --build build --target cgotpl
 ```
 For development a `check` (requires a go compiler) and `fuzz` (requires `CC=clang`) target exist.
+
+Proper handling of non-ASCII characters in CLI arguments on Windows requires building with cosmocc.
+The CLI expects valid arguments to be utf-8 encoded, which [cosmopolitan](https://github.com/jart/cosmopolitan) ensures on Windows.
+
+### Pre-Built binaries
+
+The [GitHub releases](https://github.com/Nuckal777/cgotpl/releases) contain a binary built with [cosmopolitan](https://github.com/jart/cosmopolitan) for x86_64.
+This binary is compatible with all major operating systems.
 
 ## Features
 

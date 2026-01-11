@@ -8,4 +8,6 @@ add_library(
     "${CMAKE_CURRENT_SOURCE_DIR}/template.c"
 )
 target_include_directories(cgotpl PUBLIC ${CMAKE_SOURCE_DIR}/include)
-target_link_libraries(cgotpl PUBLIC m)
+if(NOT MSVC)
+    target_link_libraries(cgotpl PUBLIC m)
+endif()
